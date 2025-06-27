@@ -54,11 +54,14 @@ input_file_description = toml_data.title;
 input_file_version = toml_data.version;
 
 % Units
-scale = toml_data.unit.scale;
+[scale] = read_labels.readUnit(toml_data);
 
 % Read shimming geometrica data
 SHIMMING_GEO = struct;
-[SHIMMING_GEO] = input_shimming_geo(toml_data,SHIMMING_GEO,scale);
+[ierr,SHIMMING_GEO] = input_shimming_geo(toml_data,SHIMMING_GEO,scale);
+if ierr > 0
+    return
+end
 
 MAGNETI_GEO = struct;
 
@@ -66,19 +69,31 @@ MAGNETI_STATO = struct;
 
 % Read material data
 MATERIALI = struct;
-[MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+[ierr,MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+if ierr > 0
+    return
+end
 
 % Read magnet temperature status
 TEMPERATURE = struct;
-[TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+[ierr,TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+if ierr > 0
+    return
+end
 
 % Read measurements in DSV
 POINTS = struct;
-[POINTS] = input_DSVMeas(toml_data,POINTS);
+[ierr,POINTS] = input_DSVMeas(toml_data,POINTS);
+if ierr > 0
+    return
+end
 
 % Input simulations data
 SIMUL_DATA = struct;
-[SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+[ierr,SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+if ierr > 0
+    return
+end
 
 if strcmpi(MATERIALI.JHcurve,'NO') && SIMUL_DATA.NL
   fprintf('Nonlinear simulation impossible without JH curves\n')
@@ -87,7 +102,7 @@ end
 
 % Read data for optimization
 SHIMMING_OPT = struct;
-[SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS,ierr] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun);
+[ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun);
 if ierr==1
     return
 end
@@ -155,6 +170,7 @@ else
   Deviation_after_optimization=evaluation_opt;
   save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Deviation_after_optimization');
   save(filemat,'Code_Version','input_file_description','input_file_version','-append');
+  fprintf('Results of shimming saved in file: %s\n',filemat);
 end
 
 
@@ -214,7 +230,23 @@ return
 end
 
 
-function [POINTS] = input_DSVMeas(toml_data,POINTS)
+function [ierr,POINTS] = input_DSVMeas(toml_data,POINTS)
+ierr=0;
+if ~isfield(toml_data.shimming,'measurement')
+    fprintf('Field [shimming.pm.measurement] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.measurement,'filemis')
+    fprintf('Field [shimming.pm.measurement.filemis] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.measurement,'component')
+    fprintf('Field [shimming.pm.measurement.component] not present\n');
+    ierr=1;
+    return
+end
 nomemis=toml_data.shimming.measurement.filemis;
 aus=load(nomemis);
 POINTS.Npoint=size(aus.acqPos,1);
@@ -234,8 +266,49 @@ return
 end
 
 
-function [SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS,ierr] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun)
+function [ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun)
 ierr=0;
+if ~isfield(toml_data.shimming,'opt_rules')
+    fprintf('Field [shimming.opt_rules] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'PM_add_per_sector')
+    fprintf('Field [shimming.opt_rules.PM_add_per_sector] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'PM_angleMax')
+    fprintf('Field [shimming.opt_rules.PM_angleMax] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'PM_size')
+    fprintf('Field [shimming.opt_rules.PM_size] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'PM_material')
+    fprintf('Field [shimming.opt_rules.PM_material] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'Zaxis_symmetry')
+    fprintf('Field [shimming.opt_rules.Zaxis_symmetry] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'ring_to_be_used')
+    fprintf('Field [shimming.opt_rules.ring_to_be_used] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.opt_rules,'ring_to_be_used')
+    fprintf('Field [shimming.opt_rules.ring_to_be_used] not present\n');
+    ierr=1;
+    return
+end
+
 SHIMMING_OPT.PM_add_per_sector=toml_data.shimming.opt_rules.PM_add_per_sector;
 SHIMMING_OPT.Variazione_angolo_PM_shim=toml_data.shimming.opt_rules.PM_angleMax;
 SHIMMING_OPT.cubo_dimU2_shim_ref=toml_data.shimming.opt_rules.PM_size(1)*scale;
@@ -260,10 +333,24 @@ end
 Nrused=length(SHIMMING_OPT.ring_to_be_used);
 SHIMMING_OPT.Ndipoli_tot_shim_max=SHIMMING_OPT.PM_add_per_sector*SHIMMING_GEO.Nsector_Shim*Nrused;
 
-SHIMMING_OPT.ending_state=toml_data.shimming.opt_rules.ending_state;
+if isfield(toml_data.shimming.opt_rules,'ending_state')
+  SHIMMING_OPT.ending_state=toml_data.shimming.opt_rules.ending_state;
+else
+  SHIMMING_OPT.ending_state='shimming_output';
+end
 
-SHIMMING_OPT.restart=toml_data.shimming.opt_rules.restart;
+if isfield(toml_data.shimming.opt_rules,'restart')
+  SHIMMING_OPT.restart=toml_data.shimming.opt_rules.restart;
+else
+  SHIMMING_OPT.restart=false;
+end
+
 if SHIMMING_OPT.restart
+  if ~isfield(toml_data.shimming.opt_rules,'starting_state')
+    fprintf('Field [shimming.opt_rules.starting_state] not present\n');
+    ierr=1;
+    return
+  end
   SHIMMING_OPT.starting_state=toml_data.shimming.opt_rules.starting_state;
   filemat=append(DirRun,'\',SHIMMING_OPT.starting_state);
   aus=load(filemat);
@@ -279,16 +366,68 @@ else
   SHIMMING_OPT.Run=1;
 end
 
-SHIMMING_OPT.MaxGenerations1=toml_data.shimming.opt_rules.MaxGenerations1;
-SHIMMING_OPT.MaxStallGenerations=toml_data.shimming.opt_rules.MaxStallGenerations;
-SHIMMING_OPT.Tolerance=toml_data.shimming.opt_rules.Tolerance;
-
+if isfield(toml_data.shimming.opt_rules,'MaxGenerations1')
+  SHIMMING_OPT.MaxGenerations1=toml_data.shimming.opt_rules.MaxGenerations1;
+else
+  SHIMMING_OPT.MaxGenerations1=100;
+end
+if isfield(toml_data.shimming.opt_rules,'MaxStallGenerations')
+  SHIMMING_OPT.MaxStallGenerations=toml_data.shimming.opt_rules.MaxStallGenerations;
+else
+  SHIMMING_OPT.MaxStallGenerations=50;
+end
+if isfield(toml_data.shimming.opt_rules,'Tolerance')
+  SHIMMING_OPT.Tolerance=toml_data.shimming.opt_rules.Tolerance;
+else
+  SHIMMING_OPT.Tolerance=1e-4;
+end
 return
 end
 
 
 
-function [SHIMMING_GEO] = input_shimming_geo(toml_data,SHIMMING_GEO,scale)
+function [ierr,SHIMMING_GEO] = input_shimming_geo(toml_data,SHIMMING_GEO,scale)
+ierr=0;
+if ~isfield(toml_data,'shimming')
+    fprintf('Field [shimming] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming,'pm')
+    fprintf('Field [shimming.pm] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'raggio')
+    fprintf('Field [shimming.pm.raggio] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'Nsector')
+    fprintf('Field [shimming.pm.Nsector] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'sector_angular_width')
+    fprintf('Field [shimming.pm.sector_angular_width] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'max_PM_per_sector')
+    fprintf('Field [shimming.pm.max_PM_per_sector] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'ring_available')
+    fprintf('Field [shimming.pm.ring_available] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.shimming.pm,'ring_Zposition')
+    fprintf('Field [shimming.pm.ring_Zposition] not present\n');
+    ierr=1;
+    return
+end
 SHIMMING_GEO.Raggio_shim=toml_data.shimming.pm.raggio;
 SHIMMING_GEO.Nsector_Shim=toml_data.shimming.pm.Nsector;
 SHIMMING_GEO.Ampiezza_angolare_settore=toml_data.shimming.pm.sector_angular_width;

@@ -2,6 +2,24 @@ classdef dipoles_sub
 
 methods (Static)
 
+
+function [MAGNETI_STATO] = assign_temperature_to_PM(TEMPERATURE,MAGNETI_GEO,MAGNETI_STATO,MATERIALI)
+if TEMPERATURE.TempVar == 2
+% Reading file with magnet temperatures
+  T = readtable(TEMPERATURE.file, 'VariableNamingRule', 'preserve');
+  TT=table2array(T);
+  MAGNETI_STATO.Temperature_magneti=TT(:,4); %Valori T per ciascun magnete
+  clear TT
+  clear T
+elseif TEMPERATURE.TempVar == 1
+  MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
+elseif TEMPERATURE.TempVar == 0
+  MAGNETI_STATO.Temperature_magneti=MATERIALI.Tref(MAGNETI_GEO.mat_number(:,1));
+end
+return
+end
+
+
 %--------------------------------------------------------------------
 % Functions for dipole treatment
 %--------------------------------------------------------------------

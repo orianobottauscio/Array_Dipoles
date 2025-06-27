@@ -52,50 +52,57 @@ input_file_description = toml_data.title;
 input_file_version = toml_data.version;
 
 % Units
-scale = toml_data.unit.scale;
+[scale] = read_labels.readUnit(toml_data);
 
 % Read magnets data
 MAGNETI_GEO = struct;
-[MAGNETI_GEO] = read_labels.readPM(toml_data,MAGNETI_GEO,scale);
+[ierr,MAGNETI_GEO] = read_labels.readPM(toml_data,MAGNETI_GEO,scale);
+if ierr > 0
+    return
+end
 
 % check if magnet geometry modification
-[MAGNETI_GEO] = read_labels.readMODGEO(toml_data,scale,MAGNETI_GEO);
+[ierr,MAGNETI_GEO] = read_labels.readMODGEO(toml_data,scale,MAGNETI_GEO);
+if ierr > 0
+    return
+end
 
 % Read material data
 MATERIALI = struct;
-[MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+[ierr,MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+if ierr > 0
+    return
+end
 
 % Read magnet temperature status
 TEMPERATURE = struct;
-[TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+[ierr,TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+if ierr > 0
+    return
+end
 
 % Read computational point (DSV)
 POINTS = struct;
-[POINTS] = read_labels.readPOINTS(toml_data,POINTS,scale);
+[ierr,POINTS] = read_labels.readPOINTS(toml_data,POINTS,scale);
+if ierr > 0
+    return
+end
 
 % Assign temperature to magnets
 MAGNETI_STATO = struct;
-if TEMPERATURE.TempVar == 2
-% Reading file with magnet temperatures
-  T = readtable(TEMPERATURE.file, 'VariableNamingRule', 'preserve');
-  TT=table2array(T);
-  MAGNETI_STATO.Temperature_magneti=TT(:,4); %Valori T per ciascun magnete
-  clear TT
-  clear T
-else
-  MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
-end
+[MAGNETI_STATO] = dipoles_sub.assign_temperature_to_PM(TEMPERATURE,MAGNETI_GEO,MAGNETI_STATO,MATERIALI);
 
 % Input simulations data
 SIMUL_DATA = struct;
-[SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+[ierr,SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+if ierr > 0
+    return
+end
 
 if strcmpi(MATERIALI.JHcurve,'NO') && SIMUL_DATA.NL
   fprintf('Nonlinear simulation impossible without JH curves\n')
   return
 end
-    
-
 
 %
 if strcmp(SIMUL_DATA.Type,'DET')
@@ -103,7 +110,11 @@ if strcmp(SIMUL_DATA.Type,'DET')
 % DETERMINISTIC SIMULATION (One Run)
 % ---------------------------------------------------------------------------
   TORQUE = struct;
-  [TORQUE] = read_labels.readTORQUE(toml_data,TORQUE);
+  [ierr,TORQUE] = read_labels.readTORQUE(toml_data,TORQUE);
+  if ierr > 0
+    return
+  end
+
 % Initialization
   L=0;
   U=0;
@@ -118,8 +129,10 @@ if strcmp(SIMUL_DATA.Type,'DET')
   [MAGNETI_STATO] = dipoles_sub.assegna_valori_dipoles(MAGNETI_GEO,MATERIALI,MAGNETI_STATO,Jresidua_relativo);
   recompute=true;
   first=true;
+  fprintf('Starting computation of PM status and field...\n');
   [~,~,~,~,BFIELD,MAGNETI_STATO] = dipoles_sub.output_dipoles(first,SIMUL_DATA.reaction,SIMUL_DATA.NL,...
       recompute,MAGNETI_GEO,MAGNETI_STATO,MATERIALI,POINTS,L,U,P,Tnoto2,Mu0,output_JHmag);
+  fprintf('Done\n');
   B5 = util.estrai_output(SIMUL_DATA,BFIELD);
   [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(B5);
   fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
@@ -133,12 +146,15 @@ if strcmp(SIMUL_DATA.Type,'DET')
   save(filemat,'input_file_description','input_file_version','-append');
 %
   if TORQUE.flag
+    fprintf('Starting computation of PM torque...\n');
     flag_all=false;
     [TORQUE] = dipoles_sub.compute_torque(flag_all,TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0);
+    fprintf('Done\n');
     file_torque=append(DirRun,'\',TORQUE.OutputFile);
     momento_total=TORQUE.momento_total;
     save(file_torque,'momento_total');
     save(filemat,'TORQUE','-append');
+    fprintf('Torque saved in file: %s\n',file_torque);
   end
   fprintf('Results saved in file: %s\n',filemat);
 
@@ -148,7 +164,10 @@ elseif strcmp(SIMUL_DATA.Type,'MC')
 % MonteCarlo SIMULATION
 % ---------------------------------------------------------------------------
   MONTECARLO = struct;
-  [MONTECARLO] = read_labels.readMONTECARLO(toml_data,MONTECARLO);
+  [ierr,MONTECARLO] = read_labels.readMONTECARLO(toml_data,MONTECARLO);
+  if ierr > 0
+    return
+  end
   util.summary_MC(MONTECARLO);
   write_every=50;   %write output every 'write_every' times
 %

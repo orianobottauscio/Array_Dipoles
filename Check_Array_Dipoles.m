@@ -45,39 +45,45 @@ end
 toml_data = toml.read(input_data);
 
 % Units
-scale = toml_data.unit.scale;
+[scale] = read_labels.readUnit(toml_data);
 
 % Read magnets data
 MAGNETI_GEO = struct;
-[MAGNETI_GEO] = read_labels.readPM(toml_data,MAGNETI_GEO,scale);
+[ierr,MAGNETI_GEO] = read_labels.readPM(toml_data,MAGNETI_GEO,scale);
+if ierr > 0
+    return
+end
 
 % check if magnet geometry modification
-[MAGNETI_GEO] = read_labels.readMODGEO(toml_data,scale,MAGNETI_GEO);
+[ierr,MAGNETI_GEO] = read_labels.readMODGEO(toml_data,scale,MAGNETI_GEO);
+if ierr > 0
+    return
+end
 
 % Read material data
 MATERIALI = struct;
-[MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+[ierr,MATERIALI] = read_labels.readMATERIAL(toml_data,MATERIALI);
+if ierr > 0
+    return
+end
 
 % Read magnet temperature status
 TEMPERATURE = struct;
-[TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+[ierr,TEMPERATURE] = read_labels.readTEMPERATURE(toml_data,TEMPERATURE);
+if ierr > 0
+    return
+end
 
 % Assign temperature to magnets
 MAGNETI_STATO = struct;
-if TEMPERATURE.TempVar == 2
-% Reading file with magnet temperatures
-  T = readtable(TEMPERATURE.file, 'VariableNamingRule', 'preserve');
-  TT=table2array(T);
-  MAGNETI_STATO.Temperature_magneti=TT(:,4); %Valori T per ciascun magnete
-  clear TT
-  clear T
-else
-  MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
-end
+[MAGNETI_STATO] = dipoles_sub.assign_temperature_to_PM(TEMPERATURE,MAGNETI_GEO,MAGNETI_STATO,MATERIALI);
 
 % Input simulations data
 SIMUL_DATA = struct;
-[SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+[ierr,SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+if ierr > 0
+    return
+end
 
 if strcmpi(MATERIALI.JHcurve,'NO') && SIMUL_DATA.NL
   fprintf('Nonlinear simulation impossible without JH curves\n')
@@ -139,7 +145,11 @@ if toml_data.check_outputs.Z_lines.flag
 %------------------------------------------------------
 %  Lettura punti di calcolo (mappatura 1D)
 %------------------------------------------------------
-    filepoint=append(Dirpoint1D,'\',Nome1D);
+    if Dirpoint1D==""
+      filepoint=Nome1D;
+    else
+      filepoint=append(Dirpoint1D,'\',Nome1D);
+    end
     aus=load(filepoint);
 % computational points
     POINTS = struct;
@@ -272,7 +282,11 @@ if toml_data.check_outputs.DSV.flag
 %  Lettura punti di calcolo (mappatura 3D)
 %  (mappatura cartesiana)
 %------------------------------------------------------
-  filepoint=append(Dirpoint3D,'\',Nome3D);
+  if Dirpoint3D==""
+      filepoint=Nome3D;
+  else
+     filepoint=append(Dirpoint3D,'\',Nome3D);
+  end
   aus=load(filepoint);
 
 % computational points
