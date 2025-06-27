@@ -45,12 +45,14 @@ end
 
 
 function B5 = estrai_output(SIMUL_DATA,BFIELD)
-if strcmp(SIMUL_DATA.Bcomponent,'x')
+if strcmpi(SIMUL_DATA.Bcomponent,'x')
  B5=BFIELD.Bx5;
-elseif strcmp(SIMUL_DATA.Bcomponent,'y')
+elseif strcmpi(SIMUL_DATA.Bcomponent,'y')
  B5=BFIELD.By5;
-elseif strcmp(SIMUL_DATA.Bcomponent,'z')
+elseif strcmpi(SIMUL_DATA.Bcomponent,'z')
  B5=BFIELD.Bz5;
+elseif strcmpi(SIMUL_DATA.Bcomponent,'mag')
+ B5=sqrt(BFIELD.Bx5.^2+BFIELD.By5.^2+BFIELD.Bz5.^2);
 end
 return
 end

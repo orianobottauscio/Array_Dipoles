@@ -12,7 +12,7 @@ MAGNETI_STATO.MuR=zeros(MAGNETI_GEO.Ndipoli_tot,1);
 MAGNETI_STATO.JrNL=zeros(MAGNETI_GEO.Ndipoli_tot,1);
 MAGNETI_STATO.HcNL=zeros(MAGNETI_GEO.Ndipoli_tot,1);
 
-if strcmpi(MATERIALI.JHcurve,'YES') 
+if MATERIALI.JHcurve
   for nd=1:MAGNETI_GEO.Ndipoli_tot
     nmat=MAGNETI_GEO.mat_number(nd,1);
     MAGNETI_STATO.MuR(nd,1)=MATERIALI.MuR(nmat,1);

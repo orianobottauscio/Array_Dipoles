@@ -6,7 +6,7 @@ methods (Static)
 
 function [MONTECARLO] = readMONTECARLO(toml_data,MONTECARLO)
 
-MONTECARLO.nround=toml_data.montecarlo.estraction;
+MONTECARLO.nround=toml_data.montecarlo.extractions;
 
 if isfield(toml_data.montecarlo,'JHmaterial')
   MONTECARLO.JHmaterialFlag=toml_data.montecarlo.JHmaterial.active;
@@ -155,7 +155,7 @@ function [MATERIALI] = readMATERIAL(toml_data,MATERIALI)
 MATERIALI.Nlist=length(toml_data.material.tref);
 MATERIALI.Lista=transpose(1:MATERIALI.Nlist);
 MATERIALI.JHcurve=toml_data.material.JHcurve;
-if strcmpi(MATERIALI.JHcurve,'YES')
+if MATERIALI.JHcurve
   MATERIALI.Tref=transpose(toml_data.material.tref);
   MATERIALI.JvT=transpose(toml_data.material.jvt);
   MATERIALI.HvT(:,1)=transpose(toml_data.material.hvt1);

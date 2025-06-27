@@ -31,13 +31,12 @@ Mu0=4e-7*pi;
 % Input from prompt line
 n_input=size(varargin,2);
 if n_input >= 1
-  if strcmp(string(varargin{1}),'[]')
-    input_data = 'standard_inputdata.txt';
-  else
-    input_data = varargin{1};
-  end
+  input_data = varargin{1};
 else
-  input_data ='standard_inputdata.txt';
+  fprintf('Input file missing\n')
+end
+if ~contains(input_data,'.toml')
+  input_data=append(input_data,'.toml');
 end
 
 % Opening input data file
