@@ -19,7 +19,7 @@ function Array_Dipoles(varargin)
 %
 % Author: O. Bottauscio (first version: 2025)
 %-------------------------------------------------------------------------
-Code_Version='1.0';
+Code_Version='1.1';
 
 fprintf('Code: Array_Dipoles, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -138,7 +138,7 @@ if strcmp(SIMUL_DATA.Type,'DET')
   fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
   fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
   fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
-  filemat=append(DirRun,'\',SIMUL_DATA.OutputFile);
+  filemat=SIMUL_DATA.OutputFile;
   save(filemat,'Code_Version','MAGNETI_GEO','MATERIALI','MAGNETI_STATO','TEMPERATURE');
   save(filemat,'SIMUL_DATA','-append');
   save(filemat,'POINTS','BFIELD','-append');
@@ -150,7 +150,7 @@ if strcmp(SIMUL_DATA.Type,'DET')
     flag_all=false;
     [TORQUE] = dipoles_sub.compute_torque(flag_all,TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0);
     fprintf('Done\n');
-    file_torque=append(DirRun,'\',TORQUE.OutputFile);
+    file_torque=TORQUE.OutputFile;
     momento_total=TORQUE.momento_total;
     save(file_torque,'momento_total');
     save(filemat,'TORQUE','-append');
@@ -181,7 +181,7 @@ elseif strcmp(SIMUL_DATA.Type,'MC')
   fprintf('Distribution of DEV2 - Mean value [ppm]: %f,  StdDev [ppm]: %f\n',...
       mean(MONTECARLO.raccolta_DEV2),std(MONTECARLO.raccolta_DEV2));
 %
-  filemat=append(DirRun,'\',SIMUL_DATA.OutputFile);
+  filemat=SIMUL_DATA.OutputFile;
   save(filemat,'Code_Version','MAGNETI_GEO','MATERIALI','MAGNETI_STATO','TEMPERATURE');
   save(filemat,'SIMUL_DATA','-append');
   save(filemat,'POINTS','-append');

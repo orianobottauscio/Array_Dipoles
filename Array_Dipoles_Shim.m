@@ -22,10 +22,11 @@ global MATERIALI
 global TEMPERATURE
 global SIMUL_DATA
 global POINTS
-Code_Version='1.1';
+Code_Version='1.2';
 
 fprintf('Code: Array_Dipoles_Shim, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
+fprintf('Running directory: %s\n',DirRun);
 
 % constants
 Mu0=4e-7*pi;
@@ -102,7 +103,7 @@ end
 
 % Read data for optimization
 SHIMMING_OPT = struct;
-[ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun);
+[ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale);
 if ierr==1
     return
 end
@@ -120,7 +121,12 @@ else
   fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
   fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
   fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
-  SHIMMING_OPT.original_deviation_ppm=DEV1_ppm;
+
+  if strcmpi(SHIMMING_OPT.DevOpt,'DEV1')
+    SHIMMING_OPT.original_deviation_ppm=DEV1_ppm;
+  elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
+    SHIMMING_OPT.original_deviation_ppm=DEV2_ppm;
+  end
 
   nvars=3*SHIMMING_OPT.Ndipoli_tot_shim_max;
   MaxGenerations1=SHIMMING_OPT.MaxGenerations1;
@@ -160,7 +166,10 @@ else
 % Reconstruct position of PM added in shimming and adjust final field in DSV
   configuration_at_end(mag_yes_no,pos_in_sector,dir_mag_shim);
 
-  filemat=append(DirRun,'\',SHIMMING_OPT.ending_state);
+  if SHIMMING_OPT.Run == 1
+      mkdir(SHIMMING_OPT.ShimmingDir);
+  end
+  filemat=append(SHIMMING_OPT.ShimmingDir,'\',SHIMMING_OPT.ending_state);
   if MAGNETI_GEO_PREVIOUS.exist
      MAGNETI_GEO = assemblea_magneti(MAGNETI_GEO_PREVIOUS,MAGNETI_GEO);
      Delta_magnets=MAGNETI_GEO.Ndipoli_tot-MAGNETI_GEO_PREVIOUS.Ndipoli_tot;
@@ -174,6 +183,15 @@ else
   Deviation_after_optimization=evaluation_opt;
   save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Delta_magnets','Deviation_after_optimization');
   save(filemat,'Code_Version','input_file_description','input_file_version','-append');
+%
+  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+  fprintf('Ending situation - \n');
+  fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+  fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
+  fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
+  Bmean_mT=Bmean*1000;
+  save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
+
   fprintf('Results of shimming saved in file: %s\n',filemat);
 end
 
@@ -270,7 +288,7 @@ return
 end
 
 
-function [ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale,DirRun)
+function [ierr,SHIMMING_OPT,SHIMMING_GEO,MAGNETI_GEO_PREVIOUS] = input_shimming_opt(toml_data,SHIMMING_OPT,SHIMMING_GEO,POINTS,scale)
 ierr=0;
 if ~isfield(toml_data.shimming,'opt_rules')
     fprintf('Field [shimming.opt_rules] not present\n');
@@ -337,6 +355,18 @@ end
 Nrused=length(SHIMMING_OPT.ring_to_be_used);
 SHIMMING_OPT.Ndipoli_tot_shim_max=SHIMMING_OPT.PM_add_per_sector*SHIMMING_GEO.Nsector_Shim*Nrused;
 
+if isfield(toml_data.shimming.opt_rules,'dev_to_be_optimized')
+  SHIMMING_OPT.DevOpt=toml_data.shimming.opt_rules.dev_to_be_optimized;
+else
+  SHIMMING_OPT.DevOpt='DEV1';
+end
+
+if isfield(toml_data.shimming.opt_rules,'shimming_Dir')
+  SHIMMING_OPT.ShimmingDir=toml_data.shimming.opt_rules.shimming_Dir;
+else
+  SHIMMING_OPT.ShimmingDir='ShimmingDir';
+end
+
 if isfield(toml_data.shimming.opt_rules,'ending_state')
   SHIMMING_OPT.ending_state=toml_data.shimming.opt_rules.ending_state;
 else
@@ -356,7 +386,7 @@ if SHIMMING_OPT.restart
     return
   end
   SHIMMING_OPT.starting_state=toml_data.shimming.opt_rules.starting_state;
-  filemat=append(DirRun,'\',SHIMMING_OPT.starting_state);
+  filemat=append(SHIMMING_OPT.ShimmingDir,'\',SHIMMING_OPT.starting_state);
   aus=load(filemat);
   SHIMMING_GEO.MatrixShimming=aus.MatrixShimming;
   MAGNETI_GEO_PREVIOUS=aus.MAGNETI_GEO;
@@ -640,10 +670,15 @@ else
   B5=zeros(length(SHIMMING_OPT.B5),1);
 end    
 B5_tot=SHIMMING_OPT.B5+B5;
-[~,~,~,deviation_tot_ppm,~] = util.variability(B5_tot);
-%fprintf('deviation_tot_ppm: %.1f\n',deviation_tot_ppm);
+[~,~,~,DEV1_ppm,DEV2_ppm] = util.variability(B5_tot);
 
-fprintf('Ndip,deviation_tot_ppm: %d %.1f\n',MAGNETI_GEO.Ndipoli_tot,deviation_tot_ppm);
+if strcmpi(SHIMMING_OPT.DevOpt,'DEV1')
+  deviation_tot_ppm=DEV1_ppm;
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
+  deviation_tot_ppm=DEV2_ppm;
+end
+
+fprintf('Added magnets: %d - deviation_tot_ppm: %.1f\n',MAGNETI_GEO.Ndipoli_tot,deviation_tot_ppm);
 
 
 return
