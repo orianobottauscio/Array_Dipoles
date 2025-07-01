@@ -1,0 +1,6 @@
+*.exe
+*.asv
+*.mat
+*.txt
+*.log
+*.toml
