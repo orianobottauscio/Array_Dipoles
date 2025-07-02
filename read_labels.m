@@ -211,7 +211,7 @@ function [MATERIALI] = readHJ(mat_number,MATERIALI)
 fileNL=string(MATERIALI.fileHJ(mat_number));
 IDfileNL = fopen(fileNL,'r');
 sizeA = [2 Inf];
-HJcurve = fscanf(IDfileNL,'%f %f',sizeA);
+HJcurve = fscanf(IDfileNL,'%f,%f',sizeA);
 HJcurve=transpose(HJcurve);
 fclose(IDfileNL);
 npNL=size(HJcurve,1);
@@ -356,7 +356,7 @@ end
 return
 end
 
-function [ierr,MONTECARLO] = readMONTECARLO(toml_data,MONTECARLO)
+function [ierr,MONTECARLO] = readMONTECARLO(toml_data,MONTECARLO,scale)
 ierr=0;
 if ~isfield(toml_data,'montecarlo')
     fprintf('Field [montecarlo] not present\n');
@@ -455,7 +455,7 @@ if isfield(toml_data.montecarlo,'Zring')
       return
   end
   MONTECARLO.ZringFlag=toml_data.montecarlo.Zring.active;
-  MONTECARLO.ZRingVar=toml_data.montecarlo.Zring.value;
+  MONTECARLO.ZRingVar=toml_data.montecarlo.Zring.value*scale;
   MONTECARLO.ZRingDistribution=toml_data.montecarlo.Zring.distribution;
 else
   MONTECARLO.ZringFlag=false;
@@ -478,7 +478,7 @@ if isfield(toml_data.montecarlo,'XMagnets')
       return
   end
   MONTECARLO.XMagnetsFlag=toml_data.montecarlo.XMagnets.active;
-  MONTECARLO.XMagnetsVar=toml_data.montecarlo.XMagnets.value;
+  MONTECARLO.XMagnetsVar=toml_data.montecarlo.XMagnets.value*scale;
   MONTECARLO.XMagnetsDistribution=toml_data.montecarlo.XMagnets.distribution;
 else
   MONTECARLO.XMagnetsFlag=false;
@@ -501,7 +501,7 @@ if isfield(toml_data.montecarlo,'YMagnets')
       return
   end
   MONTECARLO.YMagnetsFlag=toml_data.montecarlo.YMagnets.active;
-  MONTECARLO.YMagnetsVar=toml_data.montecarlo.YMagnets.value;
+  MONTECARLO.YMagnetsVar=toml_data.montecarlo.YMagnets.value*scale;
   MONTECARLO.YMagnetsDistribution=toml_data.montecarlo.YMagnets.distribution;
 else
   MONTECARLO.YMagnetsFlag=false;
@@ -524,7 +524,7 @@ if isfield(toml_data.montecarlo,'ZMagnets')
       return
   end
   MONTECARLO.ZMagnetsFlag=toml_data.montecarlo.ZMagnets.active;
-  MONTECARLO.ZMagnetsVar=toml_data.montecarlo.ZMagnets.value;
+  MONTECARLO.ZMagnetsVar=toml_data.montecarlo.ZMagnets.value*scale;
   MONTECARLO.ZMagnetsDistribution=toml_data.montecarlo.ZMagnets.distribution;
 else
   MONTECARLO.ZMagnetsFlag=false;

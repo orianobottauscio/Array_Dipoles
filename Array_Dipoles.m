@@ -164,7 +164,7 @@ elseif strcmp(SIMUL_DATA.Type,'MC')
 % MonteCarlo SIMULATION
 % ---------------------------------------------------------------------------
   MONTECARLO = struct;
-  [ierr,MONTECARLO] = read_labels.readMONTECARLO(toml_data,MONTECARLO);
+  [ierr,MONTECARLO] = read_labels.readMONTECARLO(toml_data,MONTECARLO,scale);
   if ierr > 0
     return
   end
