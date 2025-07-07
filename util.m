@@ -31,7 +31,24 @@ function summary_MC(MONTECARLO)
 return
 end
 
+function [yMean,yStd,CI] = statistical_data(y)
+cov=95;   %Coverage 95%
+t1=(1-cov/100)/2;
+t2=1-t1;
+[yMean,yStd,CI,~] = util.statistical_value(y,t1,t2);
+return
+end
 
+function [yMean,yStd,CI,ySEM] = statistical_value(y,t1,t2)
+
+N = length(y);
+yMean = mean(y);     % Mean Of All Experiments At Each Value Of ‘x’
+yStd = std(y);
+ySEM = yStd/sqrt(N);                              % Compute SStandard Error Of The Mean’ Of All Experiments At Each Value Of ‘x’
+CI = yMean+yStd*tinv([t1 t2], N-1);                    % Calculate 95% Probability Intervals Of t-Distribution
+
+return
+end
 
 function [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = variability(B5)
   Bmin=min(abs(B5(:,1)));

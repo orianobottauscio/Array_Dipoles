@@ -9,6 +9,8 @@ The local coordinate system {*u*,*v*,*w*} is always located with axis *w* along 
 The .exe version of the tool can be run by a prompt command line as,
 >Array_Dipoles <input_file>.toml
 
+Results of the simulations will be stored in the matlab file: <input_file>.mat
+
 
 ## 2. Input file (.toml)
 
@@ -80,9 +82,10 @@ Nmagnets = number of magnets in this PM group
 
 for {i = n to Nmagnets
 
-      x, y, z = coordinates of PM baricentre with respect to the master coordinate system. Value given with reference to the `scale` value.
+x, y, z = coordinates of PM baricentre with respect to the master coordinate system. Value given with reference to the `scale` value.
 
-      angle = orientation angle (in degrees) of the *v* axis (direction of PM polarization) with respect to *x* axis. 
+angle = orientation angle (in degrees) of the *v* axis (direction of PM polarization) with respect to *x* axis. 
+
 }
 
 In the following example four magnets of size 12x12x12 are listed. Coordinates are given in millimetres.
@@ -301,8 +304,6 @@ Value `type`: type of simulation
 
 Value `component`: cartesian component of the *B* field to be considered ('*x*', '*y*' or '*z*'). Also the magnitude ('*mag*') can be selected.
 
-Value `outputfile`: filename of the matlab output file where results of simulations will be stored.
-
 Value `reaction`: flag to activate or deactivate the PM reactions.
 
 Value `NL`: flag to activate or deactivate the nonlinear simulation.
@@ -315,7 +316,6 @@ Outputs are stored in file 'test.mat'
 [simul]
 type = 'det'
 component = 'x'
-outputfile = 'test.mat'
 reaction = true
 NL = true
 ```
@@ -394,9 +394,7 @@ value=0.0075
 
 The sub-table `[montecarlo.Jmagnet]` is used to activate variability of the polarization of each single PM (with residual polarization $J_{r,ref}$), as originally given in table `[material]`.
 
-The modification is done using a multipicative coefficient *k*, so that: 
-
-$J_r = k \,J_{r,ref}$
+The modification is done extracting for each PM the random value of polarization from a distribution identified by the absolute value of polarization and given variability. 
 
 If sub-table not present, this variability is not activated. 
 
@@ -404,17 +402,19 @@ Value `active`: flag for activation
 
 Value `distribution`: type of statistical distribution ('Normal' or 'Uniform')
 
-Value `value`: relative value used to define *k* distribution.
+Value `value`: absolute value to randomly modify the $J_{r,ref}$ polarization of the PM
 
+.
 if `distribution` = 'Normal'
 
-    `value` = Standard deviation of the distribution with mean value equal to 1.
+`value` = Standard deviation of the distribution with mean value equal to $J_{r,ref}$ for each single PM.
      
 if `distribution` = 'Uniform'
      
-    `value` =  limits (+/-) of uniform distribution centered on value equal to 1.
+`value` =  limits (+/-) of uniform distribution centered on $J_{r,ref}$ for each single PM.
 
-In the following example a relative variation of each single PM polarization is activated. The multiplicative coefficient *k* has Normal distribution with mean value equal to 1 and standard deviation equal to 0.028.
+
+In the following example a relative variation of each single PM polarization is activated. A Normal distribution with mean value equal to $J_{r,ref}$ and standard deviation equal to 0.028 T.
 
 ```toml
 [montecarlo.Jmagnet]
@@ -438,11 +438,11 @@ Value `value`: value to define the statistical distribution of $\Delta \alpha$.
 
 if `distribution` = 'Normal'
 
-    `value` = Standard deviation of the distribution with mean value equal to 0.
+`value` = Standard deviation of the distribution with mean value equal to 0.
      
 if `distribution` = 'Uniform'
      
-    `value` =  limits (+/-) of uniform distribution centered on value equal to 0.
+`value` =  limits (+/-) of uniform distribution centered on value equal to 0.
 
 
 In the following example a variation of each single PM orientation is activated. The distribution of $\Delta \alpha$ is assumed to be uniform, with values ranging from -1 deg to +1 deg.
@@ -472,11 +472,11 @@ Value `value`: value to define the statistical distribution of $\Delta Z_{ring}$
 
 if `distribution` = 'Normal'
 
-    `value` = Standard deviation of the distribution with mean value equal to 0.
+`value` = Standard deviation of the distribution with mean value equal to 0.
      
 if `distribution` = 'Uniform'
      
-    `value` =  limits (+/-) of uniform distribution centered on value equal to 0.
+`value` =  limits (+/-) of uniform distribution centered on value equal to 0.
 
 In the following example a variation of the *z* position of PM groups is activated. The distribution of $\Delta Z_{ring}$ is assumed to be uniform, with values ranging from -0.5 mm to +0.5 mm (being `scale` = 1e-3).
 
@@ -509,11 +509,11 @@ Value `value`: absoluted value $\Delta X_{pm}$, $\Delta Y_{pm}$, or $\Delta Z_{p
 
 if `distribution` = 'Normal'
 
-    `value` = Standard deviation of the distribution with mean value equal to 0.
+`value` = Standard deviation of the distribution with mean value equal to 0.
      
 if `distribution` = 'Uniform'
      
-    `value` =  limits (+/-) of uniform distribution centered on value equal to 0.
+`value` =  limits (+/-) of uniform distribution centered on value equal to 0.
 
 
 In the following examples variations of the *x*, *y* or *z* positions of PM is activated. The distribution of $\Delta X_{pm}$, $\Delta Y_{pm}$, or $\Delta Z_{pm}$ are assumed to be uniform, with values ranging from -0.2 mm to +0.2 mm. (being `scale` = 1e-3)

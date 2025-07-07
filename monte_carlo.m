@@ -27,7 +27,7 @@ output_JHmag=false;
 %
 for nnr = 1:MONTECARLO.nround
   if mod(nnr,write_every) == 0
-    fprintf('N. round: %d over %d\n',nnr,nround);
+    fprintf('N. round: %d over %d\n',nnr,MONTECARLO.nround);
   end
 
   recompute=false;

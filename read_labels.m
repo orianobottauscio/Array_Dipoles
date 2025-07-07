@@ -314,11 +314,6 @@ if ~isfield(toml_data.simul,'component')
 end
 SIMUL_DATA.Type=upper(toml_data.simul.type);
 SIMUL_DATA.Bcomponent=toml_data.simul.component;
-if isfield(toml_data.simul,'outputfile')
-    SIMUL_DATA.OutputFile=toml_data.simul.outputfile;
-else
-    SIMUL_DATA.OutputFile="standard_output";
-end
 % Read type of magnet model
 if isfield(toml_data.simul,'reaction')
    SIMUL_DATA.reaction=toml_data.simul.reaction;

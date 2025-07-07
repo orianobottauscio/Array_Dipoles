@@ -107,14 +107,6 @@ elseif strcmpi(SIMUL_DATA.Bcomponent,'z')
  ic=3;
 end
 %
-recompute=true;
-first=true;
-% Initialization
-L=0;
-U=0;
-P=0;
-Tnoto2=0;
-output_JHmag=true;
 if SIMUL_DATA.reaction
   [L,U,P,Tnoto2] = dipoles_sub.sistema(MAGNETI_GEO.Ndipoli_tot,MAGNETI_GEO.cubo_dimU2,MAGNETI_GEO.cubo_dimV2,MAGNETI_GEO.cubo_dimW2,...
                    Mu0,MAGNETI_STATO.MuR,MAGNETI_GEO.angle,MAGNETI_GEO.xdip,MAGNETI_GEO.ydip,MAGNETI_GEO.zdip);
@@ -140,6 +132,10 @@ if toml_data.check_outputs.Z_lines.flag
   tcl.TileSpacing = 'tight';
   maxB=0;
   minB=100;
+
+  titoli=["\alpha = 0°","\alpha = 45°","\alpha = 90°","\alpha = 135°",...
+          "\alpha = 180°","\alpha = 225°","\alpha = 270°","\alpha = 315°"];
+
   for nl=1:Nlinee
     Nome1D=string(ListaNomi(nl));
 %------------------------------------------------------
@@ -185,7 +181,8 @@ if toml_data.check_outputs.Z_lines.flag
     xlabel('Position (m)');
     ylabel('B_{x} (mT)');
     grid on
-    title(Nome1D)
+%    title(Nome1D)
+    title(titoli(nl));
   end
   for nl=1:Nlinee
     nexttile(nl)

@@ -95,6 +95,10 @@ MAGNETI_STATO = struct;
 % Input simulations data
 SIMUL_DATA = struct;
 [ierr,SIMUL_DATA] = read_labels.readSIMUL(toml_data,SIMUL_DATA);
+
+outputfile=erase(input_data,'.toml');
+outputfile=append(outputfile,'.mat');
+SIMUL_DATA.OutputFile=outputfile;
 if ierr > 0
     return
 end
@@ -174,12 +178,23 @@ elseif strcmp(SIMUL_DATA.Type,'MC')
   [MONTECARLO] = monte_carlo.Run_Monte_Carlo(write_every,MONTECARLO,MAGNETI_GEO,MATERIALI,...
       MAGNETI_STATO,SIMUL_DATA,POINTS,Mu0);
 %  
-  fprintf('Distribution of Bmean - Mean value [mT]: %f,  StdDev [mT]: %f\n',...
-      mean(MONTECARLO.raccolta_bmean),std(MONTECARLO.raccolta_bmean));
-  fprintf('Distribution of DEV1 - Mean value [ppm]: %f,  StdDev [ppm]: %f\n',...
-      mean(MONTECARLO.raccolta_DEV1),std(MONTECARLO.raccolta_DEV1));
-  fprintf('Distribution of DEV2 - Mean value [ppm]: %f,  StdDev [ppm]: %f\n',...
-      mean(MONTECARLO.raccolta_DEV2),std(MONTECARLO.raccolta_DEV2));
+  [MONTECARLO.bmean_expected,MONTECARLO.bmean_Std,MONTECARLO.bmean_CI95] = util.statistical_data(MONTECARLO.raccolta_bmean);
+  fprintf('----------- Distribution of Bmean --------------\n');
+  fprintf('Expected value [mT]: %f\n',MONTECARLO.bmean_expected);
+  fprintf('Std value [mT]: %f\n',MONTECARLO.bmean_Std);
+  fprintf('95 Coverage interval [mT]: [%f,%f]\n',MONTECARLO.bmean_CI95);
+  
+  [MONTECARLO.DEV1_expected,MONTECARLO.DEV1_Std,MONTECARLO.DEV1_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV1);
+  fprintf('----------- Distribution of DEV1 --------------\n');
+  fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV1_expected);
+  fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV1_Std);
+  fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV1_CI95);
+
+  [MONTECARLO.DEV2_expected,MONTECARLO.DEV2_Std,MONTECARLO.DEV2_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV2);
+  fprintf('----------- Distribution of DEV2 --------------\n');
+  fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV2_expected);
+  fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV2_Std);
+  fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV2_CI95);
 %
   filemat=SIMUL_DATA.OutputFile;
   save(filemat,'Code_Version','MAGNETI_GEO','MATERIALI','MAGNETI_STATO','TEMPERATURE');
