@@ -17,6 +17,7 @@ Two main types of simulations are possible:
 
 ## Usage
 
+To create an executable version, from the Matlab environment use the  script compile.com. This script is able to generate .exe files valid for Matlab versions released before 2020 (in this case the .exe file is named Array_Dipoles_2020) or later.<br> 
 Before running the script, the input data should be properly prepared following the instruction described in the Documetation.md file.<br>
 
 
