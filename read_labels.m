@@ -384,7 +384,7 @@ if isfield(toml_data.montecarlo,'JHmaterial')
   MONTECARLO.JHmaterialVar=toml_data.montecarlo.JHmaterial.value;
   MONTECARLO.JHmaterialDistribution=toml_data.montecarlo.JHmaterial.distribution;
 else
-  MONTECARLO.Jresidua_relativoFlag=false;
+  MONTECARLO.JHmaterialFlag=false;
 end
 
 if isfield(toml_data.montecarlo,'Jmagnet')
@@ -407,7 +407,7 @@ if isfield(toml_data.montecarlo,'Jmagnet')
   MONTECARLO.JmagnetVar=toml_data.montecarlo.Jmagnet.value;
   MONTECARLO.JmagnetDistribution=toml_data.montecarlo.Jmagnet.distribution;
 else
-  MONTECARLO.JresiduaFlag=false;
+  MONTECARLO.JmagnetFlag=false;
 end
 
 if isfield(toml_data.montecarlo,'Angle')
