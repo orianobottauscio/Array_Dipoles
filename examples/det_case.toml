@@ -1,0 +1,61 @@
+title = "Deterministic variations (23.7 °C) - different PM curves + Zring + torque (1.2)"
+version = "1.0.0"
+
+[unit]
+scale = 1e-3
+
+[pm]
+files = ['PM_DATA\ring0.txt',
+         'PM_DATA\ring1.txt',
+         'PM_DATA\ring2.txt',
+         'PM_DATA\ring3.txt',
+         'PM_DATA\ring4.txt',
+         'PM_DATA\ring5.txt',
+         'PM_DATA\ring6.txt',
+         'PM_DATA\ring7.txt',
+         'PM_DATA\ring8.txt',
+         'PM_DATA\mirror\ring0.txt',
+         'PM_DATA\mirror\ring1.txt',
+         'PM_DATA\mirror\ring2.txt',
+         'PM_DATA\mirror\ring3.txt',
+         'PM_DATA\mirror\ring4.txt',
+         'PM_DATA\mirror\ring5.txt',
+         'PM_DATA\mirror\ring6.txt',
+         'PM_DATA\mirror\ring7.txt',
+         'PM_DATA\mirror\ring8.txt']
+mat_code = [1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,2]
+
+
+[pm.modgeo]
+active = true
+code = 3
+zpos = [9.875,29.875,49.875,69.625,89.875,109.626,129.875,149.625,187,-10.125,-30.125,-50.125,-69.875,-89.625,-109.625,-129.625,-149.625,-187]
+file = 'TORQUE\Dipole_torque.mat'
+angle = 1.2
+
+
+[material]
+JHcurve = true
+MuR = [0.0225,0.0168]
+Jresidua = [1.4192,1.4616]
+files = ['MATERIAL_DATA\N52_HJ_short_18.txt',
+         'MATERIAL_DATA\N52_HJ_long_18.txt']
+tref = [18,18]
+jvt = [-0.001263,-0.001263]
+hvt1 = [-1e-2,-1e-2]
+hvt2 = [3.8e-5,3.8e-5]
+
+[points]
+file = 'DSV\DSV_MeasurementPoints.txt'
+
+[temperature]
+type = 1
+value = 23.7
+
+
+[simul]
+type = 'det'
+component = 'x'
+reaction = true
+NL = true
+
