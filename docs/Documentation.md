@@ -275,7 +275,7 @@ The file is structured as described below. The order of the data is coherent wit
 166.86;37.39;10;36.353817
 .....
 ```
-After the header, for each PM the values of the *x*, *y*, *z* coordinates and the corresponding value of temperature are given.  Data are separated by semi-colon.
+After the header, for each PM the values of the *x*, *y*, *z* coordinates and the corresponding value of temperature are given.  Data are separated by semi-colons.
 
 ### 2.6 DSV data section
 
@@ -303,7 +303,7 @@ The table `[simul]` is used to define the simulation input/output data
 
 Value `type`: type of simulation
 - `type` = 'det' deterministic simulation, that is one simulation using the reference input data
-- `type` = 'MC' stochastic simulation, that is Montecarlo simulation using the variability of input data provided in the table `[montecarlo]`
+- `type` = 'MC' stochastic simulation, that is Montecarlo simulation using the variability of input data provided in the table `[montecarlo]` (see section 2.9)
 
 Value `component`: cartesian component of the *B* field to be considered ('*x*', '*y*' or '*z*'). Also the magnitude ('*mag*') can be selected.
 
