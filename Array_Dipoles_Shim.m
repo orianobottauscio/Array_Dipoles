@@ -22,7 +22,7 @@ global MATERIALI
 global TEMPERATURE
 global SIMUL_DATA
 global POINTS
-Code_Version='1.2';
+Code_Version='1.3';
 
 fprintf('Code: Array_Dipoles_Shim, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -462,7 +462,7 @@ if ~isfield(toml_data.shimming.pm,'ring_Zposition')
     ierr=1;
     return
 end
-SHIMMING_GEO.Raggio_shim=toml_data.shimming.pm.raggio;
+SHIMMING_GEO.Raggio_shim=toml_data.shimming.pm.raggio*scale;
 SHIMMING_GEO.Nsector_Shim=toml_data.shimming.pm.Nsector;
 SHIMMING_GEO.Ampiezza_angolare_settore=toml_data.shimming.pm.sector_angular_width;
 SHIMMING_GEO.Max_PM_per_settore=toml_data.shimming.pm.max_PM_per_sector;
