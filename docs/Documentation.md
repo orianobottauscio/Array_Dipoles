@@ -8,7 +8,7 @@ The local coordinate system {*u*,*v*,*w*} is always located with axis *w* along 
 ![reference system](ref.png)
 
 ## 1. Command line
-The .exe version of the tool can be run by a prompt command line as,
+The .exe version of the tool can be executed through the prompt command line as,
 >Array_Dipoles <input_file>.toml
 
 Results of the simulations will be stored in the matlab file: <input_file>.mat
@@ -18,7 +18,7 @@ Results of the simulations will be stored in the matlab file: <input_file>.mat
 
 
 ### 2.1 Header
-The header include a title and a version as a memo for the input data.
+The header includes a title and a version as a memo for the input data.
 
 ```toml
 title = "Text case"
@@ -43,9 +43,9 @@ scale = 1e-3
 ### 2.3 PM data section
 The table `[pm]` is used to define the input data of the permanent magnets (PMs).
 
-Value `files`: is an array of strings which define the filenames (.txt file) containing the PM geometrical data (see section 2.3.1). Each file represents a group of PM. To each group a value of material code is assigned using the value `mat_code`.
+Value `files`: is an array of strings which define the filenames (.txt file) containing the PM geometrical data (see section 2.3.1). Each file represents a group of PMs. A value of material code is assigned to each group using the value `mat_code`.
 
-Value `mat_code`: is an array of numerical data which define the material code of each group of PMs.
+Value `mat_code`: is an array of numerical data which define the material code (see section 2.4) of each group of PMs. Its length is equal to the  number of PM groups
 
 In the following example, three groups of PMs are given. Input files (.txt) are described by the directory where they are located and by their filename.
 The first and third group have a material code index equal to 1, while the second group has material code equal to 2.
@@ -59,7 +59,7 @@ files = ['<Dir>\<FilePM1>.txt',
 mat_code = [1,2,1]
 ```
 
-After reading all PM data, PMs are numbered in order from the first to the last group. This PM order is the same used in the torque data in the matlab file used as input input in table `[pm.modgeo]` or in the matlab output file in table `[torque]`.
+After reading all PM data, PMs are numbered in order from the first to the last group. This PM order is the same used in the torque data in the matlab file used as input in table `[pm.modgeo]` or in the matlab output file in table `[torque]`.
 
 
 ## 2.3.1 PM Input data (.txt)
@@ -82,13 +82,11 @@ sizeW = PM size along local *w* axis. Value given with reference to the `scale` 
 
 Nmagnets = number of magnets in this PM group
 
-for {i = n to Nmagnets
+Each line that follows represents a PM of the group and reports the data below:
 
-x, y, z = coordinates of PM baricentre with respect to the master coordinate system. Value given with reference to the `scale` value.
+- x, y, z = coordinates of PM baricentre with respect to the master coordinate system. Value given with reference to the `scale` value.
 
-angle = orientation angle (in degrees) of the *v* axis (direction of PM polarization) with respect to *x* axis. 
-
-}
+- angle = orientation angle (in degrees) of the *v* axis (direction of PM polarization) with respect to *x* axis. 
 
 In the following example four magnets of size 12x12x12 are listed. Coordinates are given in millimetres.
 
@@ -277,7 +275,7 @@ The file is structured as described below. The order of the data is coherent wit
 166.86;37.39;10;36.353817
 .....
 ```
-After the header, for each PM the values of the *x*, *y*, *z* coordinates and the corresponding value of temperature are given.  Data are separated by semi-colon.
+After the header, for each PM the values of the *x*, *y*, *z* coordinates and the corresponding value of temperature are given.  Data are separated by semi-colons.
 
 ### 2.6 DSV data section
 
@@ -305,7 +303,7 @@ The table `[simul]` is used to define the simulation input/output data
 
 Value `type`: type of simulation
 - `type` = 'det' deterministic simulation, that is one simulation using the reference input data
-- `type` = 'MC' stochastic simulation, that is Montecarlo simulation using the variability of input data provided in the table `[montecarlo]`
+- `type` = 'MC' stochastic simulation, that is Montecarlo simulation using the variability of input data provided in the table `[montecarlo]` (see section 2.9)
 
 Value `component`: cartesian component of the *B* field to be considered ('*x*', '*y*' or '*z*'). Also the magnitude ('*mag*') can be selected.
 
