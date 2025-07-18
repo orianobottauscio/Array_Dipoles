@@ -349,7 +349,7 @@ outputfile='torque.mat'
 
 The table `[montecarlo]` is used to provide data for Montecarlo simulations.
 
-This section is only needed in case of MC simulations, that is value `type` = 'det' in table `[simul]`. 
+This section is only needed in case of MC simulations, that is value `type` = 'MC' in table `[simul]`. 
 
 Value `extractions`: Numbers of MC extractions
 
