@@ -4,7 +4,6 @@ How to use the tool Array_Dipoles for computing the magnetic flux density genera
 PMs are assumed to have a parallelepiped shape defined by a local coordinate system {*u*,*v*,*w*}. The magnet polarization *J* is oriented along the local *v* axis.
 The local coordinate system {*u*,*v*,*w*} is always located with axis *w* along the *z* axis of the global coordinate system. The magnet can be rotated in the *xy*-plane by an angle $\alpha$ (see the figure below). The geometrical data describing the PMs are detailed in section PM Input data.
 
-
 ![reference system](ref.png)
 
 ## 1. Command line
