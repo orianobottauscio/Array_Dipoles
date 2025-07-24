@@ -125,6 +125,24 @@ zpl=vaus2(3);
 return
 end
 
+function [xp,yp,zp] = local_to_global(xpl,ypl,zpl,drif)
+%===================================================================
+%     Il Punto di coordinate (XPL,YPL,ZPL) nel sistema locale
+%     definito da DRIF viene trasformato nel punto di
+%     coordinate (XP,YP,ZP) del sistema master
+%===================================================================
+[phi,the,psi] = util.eultre(drif);
+[r] = util.matrot(phi,the,psi);
+vaus1(1,1)=xpl;
+vaus1(2,1)=ypl;
+vaus1(3,1)=zpl;
+vaus2=r*vaus1;
+xp=vaus2(1)+drif(1,1);
+yp=vaus2(2)+drif(1,2);
+zp=vaus2(3)+drif(1,3);
+return
+end
+
 function [vx,vy,vz] = vector_local_to_global_par(vxl,vyl,vzl,drif)
 %===================================================================
 %       Dato un vettore di componenti (VXL,VYL,VZL) definite

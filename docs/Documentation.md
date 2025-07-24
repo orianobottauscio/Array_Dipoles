@@ -87,7 +87,7 @@ Each line that follows represents a PM of the group and reports the data below:
 
 - angle = orientation angle (in degrees) of the *v* axis (direction of PM polarization) with respect to *x* axis. 
 
-In the following example four magnets of size 12x12x12 are listed. Coordinates are given in millimetres.
+In the following example four magnets of size (12x12x12) mm<sup>3</sup> are listed. Coordinates are given in millimetres.
 
 ```txt
 12,12,12
