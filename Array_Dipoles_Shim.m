@@ -168,16 +168,24 @@ options = optimoptions('ga','MaxGenerations',MaxGenerations,...
 f = @(x_input) deviation_in_sphere3(x_input);
 %  
 if SHIMMING_OPT.PM_fixed
-  [x_input,evaluation_opt,exitflag] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
+  [x_input,evaluation_opt,exitflag,Output] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
 else
-  [x_input,evaluation_opt,exitflag] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
+  [x_input,evaluation_opt,exitflag,Output] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
 end    
-fprintf('Optimal value of Deviation after shimming (ppm): %f\n',evaluation_opt);
-fprintf('Original value of Deviation before shimming (ppm): %f\n',SHIMMING_OPT.original_deviation_ppm);
-fprintf('Exit flag: %d\n',exitflag);
 
 computational_time=toc(start_optimization);
-disp(['Entire optimization execution - computational time = ' num2str(computational_time)])
+fprintf('--------------------------------------------------------\n');
+fprintf('Exit flag: %d\n',exitflag);
+fprintf('Number of generations: %d\n', Output.generations);
+fprintf('Number of function evaluations: %d\n', Output.funccount);
+fprintf('%s\n', Output.message);
+fprintf('Computational time: %.1f\n',computational_time);
+fprintf('Optimal value of Deviation after shimming (ppm): %.1f\n',evaluation_opt);
+fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
+fprintf('--------------------------------------------------------\n');
+
+
+
 
 [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input);
 
@@ -193,9 +201,8 @@ if MAGNETI_GEO_PREVIOUS.exist
 else
    Delta_magnets=MAGNETI_GEO.Ndipoli_tot;
 end
-fprintf('#############################################\n');
+fprintf('#######################################################\n');
 fprintf('SUMMARY\n');
-fprintf('#############################################\n');
 fprintf('Added magnets: %d\n',Delta_magnets);
 MatrixShimming=SHIMMING_GEO.MatrixShimming;
 FieldValues=SHIMMING_OPT.B5;
@@ -219,16 +226,17 @@ save(filemat,'SIMUL_DATA','TEMPERATURE','-append');
 %
 [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
 fprintf('Ending situation - \n');
-fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
-fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
-fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
+fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
+fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
 
 Angle_min=min(x_input(1,ini(1):fin(1)));
 Angle_max=max(x_input(1,ini(1):fin(1)));
-fprintf('Min and Max rotational angle (degree): %f %f\n',Angle_min,Angle_max);
+fprintf('Min and Max rotational angle (degree): %.1f %.1f\n',Angle_min,Angle_max);
 Bmean_mT=Bmean*1000;
 save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
 fprintf('Results of shimming saved in file: %s\n',filemat);
+fprintf('#######################################################\n');
 
 end
 
