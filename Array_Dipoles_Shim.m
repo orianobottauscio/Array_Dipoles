@@ -176,8 +176,8 @@ fprintf('Optimal value of Deviation after shimming (ppm): %f\n',evaluation_opt);
 fprintf('Original value of Deviation before shimming (ppm): %f\n',SHIMMING_OPT.original_deviation_ppm);
 fprintf('Exit flag: %d\n',exitflag);
 
-time=toc(start_optimization);
-disp(['Entire optimization execution: computational time = ' num2str(time)])
+computational_time=toc(start_optimization);
+disp(['Entire optimization execution - computational time = ' num2str(computational_time)])
 
 [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input);
 
@@ -203,6 +203,8 @@ Run=SHIMMING_OPT.Run;
 Deviation_after_optimization=evaluation_opt;
 save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Delta_magnets','Deviation_after_optimization');
 save(filemat,'Code_Version','input_file_description','input_file_version','-append');
+save(filemat,'computational_time','-append');
+
 % Extract general info for optimization to be saved
 
 if SHIMMING_GEO.sector_type == 1
@@ -224,7 +226,6 @@ fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
 Angle_min=min(x_input(1,ini(1):fin(1)));
 Angle_max=max(x_input(1,ini(1):fin(1)));
 fprintf('Min and Max rotational angle (degree): %f %f\n',Angle_min,Angle_max);
-
 Bmean_mT=Bmean*1000;
 save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
 fprintf('Results of shimming saved in file: %s\n',filemat);
