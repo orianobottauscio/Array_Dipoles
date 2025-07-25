@@ -244,7 +244,6 @@ end
 
 function [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input)
 global SHIMMING_OPT
-global SHIMMING_GEO
 
 [ini,fin] = ini_fin_blocchi(SHIMMING_OPT.nvar_block);
 if SHIMMING_OPT.PM_angle_equal_Z
@@ -689,8 +688,8 @@ if SHIMMING_GEO.sector_type == 1
   ii=0;
   for Nu=1:Nring_used
     Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nu=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nu);
+    for nus=1:SHIMMING_OPT.Nsector_Shim
+      Ns=SHIMMING_OPT.sector_to_be_used(nus);
       for Nm=1:SHIMMING_OPT.PM_add_per_sector
         ii=ii+1;
         if ii > Nmax
@@ -738,8 +737,8 @@ elseif SHIMMING_GEO.sector_type == 2
   ii=0;
   for Nu=1:Nring_used
     Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nu=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nu);
+    for nus=1:SHIMMING_OPT.Nsector_Shim
+      Ns=SHIMMING_OPT.sector_to_be_used(nus);
       for Nm=1:SHIMMING_OPT.PM_add_per_sector
         ii=ii+1;
         if ii > Nmax
@@ -805,8 +804,8 @@ if SHIMMING_GEO.sector_type == 1
   ii=0;
   for Nu=1:Nring_used
     Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nu=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nu);
+    for nus=1:SHIMMING_OPT.Nsector_Shim
+      Ns=SHIMMING_OPT.sector_to_be_used(nus);
       for Nm=1:SHIMMING_OPT.PM_add_per_sector
         ii=ii+1;
         ipos=pos_in_sector(ii,1);
@@ -852,8 +851,8 @@ elseif SHIMMING_GEO.sector_type == 2
   ii=0;
   for Nu=1:Nring_used
     Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nu=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nu);
+    for nus=1:SHIMMING_OPT.Nsector_Shim
+      Ns=SHIMMING_OPT.sector_to_be_used(nus);
       for Nm=1:SHIMMING_OPT.PM_add_per_sector
         ii=ii+1;
         ipos=pos_in_sector(ii,1);
