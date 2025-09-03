@@ -475,6 +475,12 @@ if isfield(toml_data.shimming.opt_rules,'PM_angle_equal_Z')
 end
 
 SHIMMING_OPT.Variazione_angolo_PM_shim=toml_data.shimming.opt_rules.PM_angleMax;
+
+SHIMMING_OPT.PM_angle_initial = false;
+if isfield(toml_data.shimming.opt_rules,'PM_angle_initial')
+  SHIMMING_OPT.PM_angle_initial=toml_data.shimming.opt_rules.PM_angle_initial;
+end
+
 SHIMMING_OPT.cubo_dimU2_shim_ref=toml_data.shimming.opt_rules.PM_size(1)*scale;
 SHIMMING_OPT.cubo_dimV2_shim_ref=toml_data.shimming.opt_rules.PM_size(2)*scale;
 SHIMMING_OPT.cubo_dimW2_shim_ref=toml_data.shimming.opt_rules.PM_size(3)*scale;
@@ -744,17 +750,21 @@ if SHIMMING_GEO.sector_type == 1
         end
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-          if aa<0
-            aa=aa+2*pi;
+          if ~SHIMMING_OPT.PM_angle_initial
+            angolo_OR=0;    %zero
+          else
+            aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
+            if aa<0
+              aa=aa+2*pi;
+            end
+            angolo_OR=2*aa/pi*180;    %Halbach ideal
           end
-          angolo=aa/pi*180;
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
             MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
             MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
             MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
             MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
             MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -767,7 +777,7 @@ if SHIMMING_GEO.sector_type == 1
               MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
               MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
               MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
               MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
               MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
               MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -793,13 +803,18 @@ elseif SHIMMING_GEO.sector_type == 2
         end
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
+          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);   %Halbach ideal
+          if ~SHIMMING_OPT.PM_angle_initial
+            angolo_OR=0;    %zero
+          else
+            angolo_OR=2*angolo;    %Halbach ideal
+          end
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
             MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
             MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
             MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
             MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
             MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -812,7 +827,7 @@ elseif SHIMMING_GEO.sector_type == 2
               MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
               MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
               MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
               MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
               MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
               MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -856,17 +871,21 @@ if SHIMMING_GEO.sector_type == 1
         ii=ii+1;
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-          if aa<0
-            aa=aa+2*pi;
+          if ~SHIMMING_OPT.PM_angle_initial
+            angolo_OR=0;    %zero
+          else
+            aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
+            if aa<0
+              aa=aa+2*pi;
+            end
+            angolo_OR=2*aa/pi*180;    %Halbach ideal
           end
-          angolo=aa/pi*180;
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
             MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
             MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
             MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
             MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
             MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -880,7 +899,7 @@ if SHIMMING_GEO.sector_type == 1
               MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
               MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
               MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
               MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
               MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
               MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -904,12 +923,17 @@ elseif SHIMMING_GEO.sector_type == 2
         ipos=pos_in_sector(ii,1);
         if ipos > 0
           angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
+          if ~SHIMMING_OPT.PM_angle_initial
+            angolo_OR=0;    %zero
+          else
+            angolo_OR=2*angolo;    %Halbach ideal
+          end
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
             MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
             MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
             MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
             MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
             MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
@@ -923,7 +947,7 @@ elseif SHIMMING_GEO.sector_type == 2
               MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
               MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
               MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=2*angolo+dir_mag_shim(ii,1);
+              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
               MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
               MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
               MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
