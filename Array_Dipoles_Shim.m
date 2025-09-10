@@ -154,67 +154,91 @@ else
 end
 MaxGenerations1=SHIMMING_OPT.MaxGenerations1;
 MaxStallGenerations=SHIMMING_OPT.MaxStallGenerations;
+PopulationSize=SHIMMING_OPT.PopulationSize;
 Tolerance=SHIMMING_OPT.Tolerance;
 
 start_optimization = tic;
-
 fprintf('----OPTIMIZATION with GA----\n');
 fprintf('N. of parameters: %d\n',nvars);
 MaxGenerations=MaxGenerations1*nvars;
 options = optimoptions('ga','MaxGenerations',MaxGenerations,...
                             'MaxStallGenerations',MaxStallGenerations,...
+                            'PopulationSize',PopulationSize,...
                             'FunctionTolerance',Tolerance);
-
 f = @(x_input) deviation_in_sphere3(x_input);
 %  
 if SHIMMING_OPT.PM_fixed
-  [x_input,evaluation_opt,exitflag,Output] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
+  [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
 else
-  [x_input,evaluation_opt,exitflag,Output] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
+  [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
 end    
-
 computational_timeGA=toc(start_optimization);
-fprintf('--------------------------------------------------------\n');
-fprintf('Genetic Algorithm\n');
-fprintf('Exit flag: %d\n',exitflag);
-fprintf('Number of generations: %d\n', Output.generations);
-fprintf('Number of function evaluations: %d\n', Output.funccount);
-fprintf('%s\n', Output.message);
-fprintf('Computational time: %.1f\n',computational_timeGA);
-fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
-fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_opt);
-evaluation_opt_GA=evaluation_opt;
-fprintf('--------------------------------------------------------\n');
 
+% Optionally other methods
 computational_timePS=0;
-if SHIMMING_OPT.Patternsearch
+computational_timeFM=0;
+if SHIMMING_OPT.Fmincon
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with Fmincon----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+  options = optimoptions('fmincon','FunctionTolerance',Tolerance);
+  x_input_start = x_input;
+  [x_input,evaluation_optFM,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
+  computational_timeFM=toc(start_optimization);
+elseif SHIMMING_OPT.Patternsearch
   start_optimization = tic;
   fprintf('----OPTIMIZATION with Patternsearch----\n');
   fprintf('N. of parameters: %d\n',nvars);
   options = optimoptions('patternsearch','FunctionTolerance',Tolerance);
-%  
   x_input_start = x_input;
-  [x_input,evaluation_opt,exitflag,Output] = patternsearch(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
-  
+  [x_input,evaluation_optPS,exitflagPS,OutputPS] = patternsearch(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
   computational_timePS=toc(start_optimization);
-  fprintf('--------------------------------------------------------\n');
-  fprintf('Patternsearch Algorithm\n');
-  fprintf('Exit flag: %d\n',exitflag);
-  fprintf('Number of function evaluations: %d\n', Output.funccount);
-  fprintf('%s\n', Output.message);
-  fprintf('Computational time: %.1f\n',computational_timePS);
-  fprintf('Optimal value of Deviation after Patternsearch (ppm): %.1f\n',evaluation_opt);
-  fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_opt_GA);
-  fprintf('--------------------------------------------------------\n');
-  if evaluation_opt > evaluation_opt_GA   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
-    x_input = x_input_start;
-    fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
-  end
 end
 
-computational_time=computational_timeGA+computational_timePS;
-fprintf('Total computational time: %.1f\n',computational_time);
+%=======================================================================
+fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
+fprintf('--------------------------------------------------------\n');
+fprintf('Genetic Algorithm\n');
+fprintf('Exit flag: %d\n',exitflagGA);
+fprintf('Number of generations: %d\n', OutputGA.generations);
+fprintf('%s\n', OutputGA.message);
+fprintf('Computational time: %.1f\n',computational_timeGA);
+fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_optGA);
+evaluation_opt=evaluation_optGA;
+fprintf('--------------------------------------------------------\n');
 
+if SHIMMING_OPT.Fmincon
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Fmincon Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagFM);
+  fprintf('%s\n', OutputFM.message);
+  fprintf('Computational time: %.1f\n',computational_timeFM);
+  fprintf('Optimal value of Deviation after Fmincon (ppm): %.1f\n',evaluation_optFM);
+  fprintf('--------------------------------------------------------\n');
+  if evaluation_optFM > evaluation_optGA   %Se al termine di Fmincon risultato peggiore, ripristina risultato GA
+    x_input = x_input_start;
+    fprintf('WARNING: Fmincon provides worst result: recovered GA solution\n');
+  else
+    evaluation_opt=evaluation_optFM;
+  end
+elseif SHIMMING_OPT.Patternsearch
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Patternsearch Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagPS);
+  fprintf('%s\n', OutputPS.message);
+  fprintf('Computational time: %.1f\n',computational_timePS);
+  fprintf('Optimal value of Deviation after Patternsearch (ppm): %.1f\n',evaluation_optPS);
+  fprintf('--------------------------------------------------------\n');
+  if evaluation_optPS > evaluation_optGA   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
+    x_input = x_input_start;
+    fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
+  else
+    evaluation_opt=evaluation_optPS;
+  end
+end
+%=======================================================================
+computational_time=computational_timeGA+computational_timePS+computational_timeFM;
+fprintf('Total computational time: %.1f\n',computational_time);
 
 [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input);
 
@@ -240,6 +264,12 @@ Deviation_after_optimization=evaluation_opt;
 save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Delta_magnets','Deviation_after_optimization');
 save(filemat,'Code_Version','input_file_description','input_file_version','-append');
 save(filemat,'computational_time','-append');
+save(filemat,'OutputGA','-append');
+if SHIMMING_OPT.Fmincon
+  save(filemat,'OutputFM','-append');
+elseif SHIMMING_OPT.Patternsearch
+  save(filemat,'OutputPS','-append');
+end
 
 % Extract general info for optimization to be saved
 
@@ -264,6 +294,9 @@ Angle_max=max(x_input(1,ini(1):fin(1)));
 fprintf('Min and Max rotational angle (degree): %.1f %.1f\n',Angle_min,Angle_max);
 Bmean_mT=Bmean*1000;
 save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
+
+save(filemat,'MATERIALI','POINTS','-append');   %Servono per poter usare il programma Check_Shim_configuration
+
 fprintf('Results of shimming saved in file: %s\n',filemat);
 fprintf('#######################################################\n');
 
@@ -558,6 +591,11 @@ if isfield(toml_data.shimming.opt_rules,'MaxStallGenerations')
 else
   SHIMMING_OPT.MaxStallGenerations=50;
 end
+if isfield(toml_data.shimming.opt_rules,'PopulationSize')
+  SHIMMING_OPT.PopulationSize=toml_data.shimming.opt_rules.PopulationSize;
+else
+  SHIMMING_OPT.PopulationSize=200;
+end
 if isfield(toml_data.shimming.opt_rules,'Tolerance')
   SHIMMING_OPT.Tolerance=toml_data.shimming.opt_rules.Tolerance;
 else
@@ -570,6 +608,11 @@ else
   SHIMMING_OPT.Patternsearch=false;
 end
 
+if isfield(toml_data.shimming.opt_rules,'Fmincon')
+  SHIMMING_OPT.Fmincon=toml_data.shimming.opt_rules.Fmincon;
+else
+  SHIMMING_OPT.Fmincon=false;
+end
 
 
 return
