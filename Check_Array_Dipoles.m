@@ -195,6 +195,14 @@ end
 
 if toml_data.check_outputs.XYZ.flag
 %------------------Output 2------------------------------------
+  Dirpoint1D=toml_data.check_outputs.XYZ.DirData;
+  Nome1D=toml_data.check_outputs.XYZ.File;
+%------------------------------------------------------
+%  Lettura punti di calcolo (mappatura 1D)
+%------------------------------------------------------
+  filepoint=append(Dirpoint1D,'\',Nome1D);
+  aus=load(filepoint);
+
   figure(2)
   x0=10;
   y0=10;
@@ -205,35 +213,33 @@ if toml_data.check_outputs.XYZ.flag
   tcl.TileSpacing = 'tight';
 % computational points
   POINTS = struct;
-  POINTS.Npoint=200;
   maxB=0;
   minB=100;
   for nl=1:3
 %------------------------------------------------------
 %  Lettura punti di calcolo (mappatura 1D)
 %------------------------------------------------------
-    raggio=transpose(linspace(-0.12,0.12,POINTS.Npoint));
-    dangolo=0.0;
     if nl==1
-      angolo=90+dangolo;
-      POINTS.xp=raggio*sin(angolo/180*pi);
-      POINTS.yp=raggio*cos(angolo/180*pi);
+      POINTS.Npoint=length(aus.xx);
+      POINTS.xp(:,1)=aus.xx*1e-3;
+      POINTS.yp=zeros(POINTS.Npoint,1);
       POINTS.zp=zeros(POINTS.Npoint,1);
       line=POINTS.xp;
       ll='Position x (m)';
       tt='X axis';
     elseif nl==2
-      angolo=0+dangolo;
-      POINTS.xp=raggio*sin(angolo/180*pi);
-      POINTS.yp=raggio*cos(angolo/180*pi);
+      POINTS.Npoint=length(aus.yy);
+      POINTS.xp=zeros(POINTS.Npoint,1);
+      POINTS.yp(:,1)=aus.yy*1e-3;
       POINTS.zp=zeros(POINTS.Npoint,1);
       line=POINTS.yp;
       ll='Position y (m)';
       tt='Y axis';
     elseif nl==3
+      POINTS.Npoint=length(aus.zz);
       POINTS.xp=zeros(POINTS.Npoint,1);
       POINTS.yp=zeros(POINTS.Npoint,1);
-      POINTS.zp=raggio;
+      POINTS.zp(:,1)=aus.zz*1e-3;
       line=POINTS.zp;
       ll='Position z (m)';
       tt='Z axis';
@@ -243,20 +249,23 @@ if toml_data.check_outputs.XYZ.flag
         MAGNETI_GEO.cubo_dimU2,MAGNETI_GEO.cubo_dimV2,MAGNETI_GEO.cubo_dimW2,J,Mu0);
     B5 = util.estrai_output(SIMUL_DATA,BFIELD);
     B5=B5*1000.;
-    if max(B5)>maxB
-        maxB=max(B5);
-    end
-    if min(B5)<minB
-        minB=min(B5);
-    end
     nexttile(tcl)
     hold on
-    plot(line,B5,'k','LineWidth',2)
+    plot(line,B5,'--k','LineWidth',2)
+    if nl==1
+      plot(line,abs(aus.bbx),'k','LineWidth',2)
+    elseif nl==2
+      plot(line,abs(aus.bby),'k','LineWidth',2)
+    elseif nl==3
+      plot(line,abs(aus.bbz),'k','LineWidth',2)
+    end      
     xlabel(ll);
     ylabel('B (mT)');
     title(tt)
     grid on
   end
+  minB=47.;
+  maxB=50.;
   for nl=1:3
     nexttile(nl)
     ylim([minB maxB]);
@@ -270,10 +279,10 @@ if toml_data.check_outputs.DSV.flag
   figure(3)
   x0=10;
   y0=10;
-  width=1000;
+  width=400;
   height=1000;
   set(3,'position',[x0,y0,width,height]);
-  tcl = tiledlayout(2,1);
+  tcl = tiledlayout(4,1);
   tcl.TileSpacing = 'tight';
 %------------------------------------------------------
 %  Lettura punti di calcolo (mappatura 3D)
@@ -332,5 +341,162 @@ if toml_data.check_outputs.DSV.flag
   fprintf('Dev1 (ppm) - Mis: %f,  Comp: %f\n',Dev1_mis,Dev1_comp);
   fprintf('Dev2 (ppm) - Mis: %f,  Comp: %f\n',Dev2_mis,Dev2_comp);
 end
+
+if toml_data.check_outputs.Surf2D.flag
+%------------------Output 4------------------------------------
+  Dirpoint2D=toml_data.check_outputs.Surf2D.DirData;
+  ListaNomi2D=toml_data.check_outputs.Surf2D.Files;
+
+  figure(2)
+  x0=10;
+  y0=10;
+  width=500;
+  height=1000;
+  set(2,'position',[x0,y0,width,height]);
+  tcl = tiledlayout(3,3);
+  tcl.TileSpacing = 'tight';
+
+  for i=1:9
+      ai(i)=nexttile(tcl);
+  end
+  ttt=[1,4,7,2,5,8,3,6,9];
+
+% computational points
+  POINTS = struct;
+  im=0;
+  for nl=1:3
+%------------------------------------------------------
+%  Lettura punti di calcolo (mappatura 2D)
+%------------------------------------------------------
+    Nome2D=string(ListaNomi2D(nl));
+    filepoint=append(Dirpoint2D,'\',Nome2D);
+    aus=load(filepoint);
+    load('I:\Drive condivisi\EPM 2022 - A4IM\Magnet\Misure_Array\Characterization\20250418\vik.mat');
+   
+    POINTS.Npoint=length(aus.p1);
+    if nl==1
+      POINTS.xp(:,1)=aus.p1*1e-3;
+      POINTS.yp(:,1)=aus.p2*1e-3;
+      POINTS.zp=zeros(POINTS.Npoint,1);
+      tt='XY plane';
+    elseif nl==2
+      POINTS.xp(:,1)=aus.p1*1e-3;
+      POINTS.zp(:,1)=aus.p2*1e-3;
+      POINTS.yp=zeros(POINTS.Npoint,1);
+      tt='XZ plane';
+    elseif nl==3
+      POINTS.yp(:,1)=aus.p1*1e-3;
+      POINTS.zp(:,1)=aus.p2*1e-3;
+      POINTS.xp=zeros(POINTS.Npoint,1);
+      tt='YZ plane';
+    end
+    [BFIELD.Bx5,BFIELD.By5,BFIELD.Bz5] = dipoles_sub.compute_field(POINTS.Npoint,POINTS.xp,POINTS.yp,POINTS.zp,...
+        MAGNETI_GEO.Ndipoli_tot,MAGNETI_GEO.xdip,MAGNETI_GEO.ydip,MAGNETI_GEO.zdip,MAGNETI_GEO.angle,...
+        MAGNETI_GEO.cubo_dimU2,MAGNETI_GEO.cubo_dimV2,MAGNETI_GEO.cubo_dimW2,J,Mu0);
+    B5 = util.estrai_output(SIMUL_DATA,BFIELD);
+    B5=B5*1000.;
+
+    piano_pbc=NaN(length(aus.piano_p1),length(aus.piano_p2));
+    for i=1:length(aus.piano_p1)
+      for j=1:length(aus.piano_p2)
+        p1a=aus.piano_p1(i);
+        p2a=aus.piano_p2(j);
+        for k=1:length(aus.p1)
+          if aus.p1(k)==p1a && aus.p2(k)==p2a
+              piano_pbc(i,j)=B5(k,1);
+              break
+          end
+        end
+      end
+    end
+
+    piano_pbc=abs(piano_pbc);
+    aus.piano_pb=abs(aus.piano_pb);
+    
+    aa((nl-1)*2+1)=min(aus.piano_pb,[],"all");
+    aa((nl-1)*2+2)=min(piano_pbc,[],"all");
+    bb((nl-1)*2+1)=max(aus.piano_pb,[],"all");
+    bb((nl-1)*2+2)=max(piano_pbc,[],"all");
+
+    piano_dif=piano_pbc-aus.piano_pb;
+    cc(nl)=min(piano_dif,[],"all");
+    dd(nl)=max(piano_dif,[],"all");
+%
+    im=im+1;
+    nexttile(ttt(im));
+    imagesc(aus.piano_p1,aus.piano_p2,aus.piano_pb);
+    axis square
+    axis equal
+    axis image
+%
+    im=im+1;
+    nexttile(ttt(im));
+    imagesc(aus.piano_p1,aus.piano_p2,piano_pbc);
+    axis square
+    axis equal
+    axis image
+%
+    im=im+1;
+    nexttile(ttt(im));
+    imagesc(aus.piano_p1,aus.piano_p2,piano_dif);
+    axis square
+    axis equal
+    axis image
+
+  end
+
+    minB=min(aa);
+    maxB=max(bb);
+    mindB=min(cc);
+    maxdB=max(dd);
+
+
+    nexttile(1)
+    clim([minB maxB]);
+    nexttile(2)
+    clim([minB maxB]);
+    nexttile(3)
+    a1=colorbar;
+    colormap(a1,turbo);
+    clim([minB maxB]);
+    a1.Label.String = 'B (mT)';
+    a1.Location='eastoutside';
+
+    nexttile(4)
+    clim([minB maxB]);
+    nexttile(5)
+    clim([minB maxB]);
+    nexttile(6)
+    a2=colorbar;
+    colormap(a2,turbo);
+    clim([minB maxB]);
+    a2.Label.String = 'B (mT)';
+    a2.Location='eastoutside';
+
+
+    nexttile(7)
+    clim([mindB maxdB]);
+    nexttile(8)
+    clim([mindB maxdB]);
+    nexttile(9)
+    a3=colorbar;
+    colormap(a3,vik);
+    clim([mindB maxdB]);
+    a3.Label.String = '\DeltaB (mT)';
+    a3.Location='eastoutside';
+
+    colormap(ai(1),turbo)
+    colormap(ai(2),turbo)
+    colormap(ai(3),turbo)
+    colormap(ai(4),turbo)
+    colormap(ai(5),turbo)
+    colormap(ai(6),turbo)
+    colormap(ai(7),vik)
+    colormap(ai(8),vik)
+    colormap(ai(9),vik)    
+
+end
+
+
 
 end

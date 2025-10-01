@@ -22,7 +22,7 @@ global MATERIALI
 global TEMPERATURE
 global SIMUL_DATA
 global POINTS
-Code_Version='2.3';
+Code_Version='0.24';
 
 fprintf('Code: Array_Dipoles_Shim, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -138,112 +138,182 @@ end
 SHIMMING_OPT.nvar_block(2)=SHIMMING_OPT.Ndipoli_tot_shim_max;
 
 [ini,fin] = ini_fin_blocchi(SHIMMING_OPT.nvar_block);
+
+flag_interi=false;
 if SHIMMING_OPT.PM_fixed
 % Posizione PM fissata (non prevista assenza PM)
   nvars=SHIMMING_OPT.nvar_block(1);
-  x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
-  x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
+  if SHIMMING_OPT.PM_NumAngle == 0
+    x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
+    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
+  else
+    x_input_Min(1,ini(1):fin(1))=0;
+    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.PM_NumAngle-1;   %Numero di step discreti dell'angolo
+    intcon=ini(1):fin(1);   %il bloccho 1 degli input è di interi
+    flag_interi=true;
+  end
 else
 % Posizione PM scelta da ottimizzazione
   nvars=sum(SHIMMING_OPT.nvar_block);
-  intcon=ini(2):fin(2);   %il blocchi 2 degli input sono interi
-  x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
-  x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
-  x_input_Min(1,ini(2):fin(2))=0;   % La posizione 0 significa PM non presente
-  x_input_Max(1,ini(2):fin(2))=SHIMMING_GEO.Max_PM_per_settore;
+  if SHIMMING_OPT.PM_NumAngle == 0
+    intcon=ini(2):fin(2);   %il blocco 2 degli input è di interi
+    x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
+    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
+    x_input_Min(1,ini(2):fin(2))=0;   % La posizione 0 significa PM non presente
+    x_input_Max(1,ini(2):fin(2))=SHIMMING_GEO.Max_PM_per_settore;
+  else
+    intcon=ini(1):fin(2);   %sia il blocco 1 che 2 degli input è di interi
+    x_input_Min(1,ini(1):fin(1))=0;
+    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.PM_NumAngle-1;   %Numero di step discreti dell'angolo
+    x_input_Min(1,ini(2):fin(2))=0;   % La posizione 0 significa PM non presente
+    x_input_Max(1,ini(2):fin(2))=SHIMMING_GEO.Max_PM_per_settore;
+  end
+  flag_interi=true;
 end
 MaxGenerations1=SHIMMING_OPT.MaxGenerations1;
 MaxStallGenerations=SHIMMING_OPT.MaxStallGenerations;
 PopulationSize=SHIMMING_OPT.PopulationSize;
 Tolerance=SHIMMING_OPT.Tolerance;
+Rate=SHIMMING_OPT.MutationRate;
 
-start_optimization = tic;
-fprintf('----OPTIMIZATION with GA----\n');
-fprintf('N. of parameters: %d\n',nvars);
-MaxGenerations=MaxGenerations1*nvars;
-options = optimoptions('ga','MaxGenerations',MaxGenerations,...
-                            'MaxStallGenerations',MaxStallGenerations,...
-                            'PopulationSize',PopulationSize,...
-                            'FunctionTolerance',Tolerance);
+
 f = @(x_input) deviation_in_sphere3(x_input);
-%  
-if SHIMMING_OPT.PM_fixed
-  [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
-else
-  [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
-end    
-computational_timeGA=toc(start_optimization);
+x_input_good=(x_input_Min+x_input_Max)/2;   %Serve per input metodi successivi (se non viene usato GA)
+previous_evaluation=false;
 
-% Optionally other methods
+computational_timeGA=0;
+if SHIMMING_OPT.GA
+  SHIMMING_OPT.Method_Actual='(GA)';
+  SHIMMING_OPT.Neval=0;
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with GA----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+  MaxGenerations=MaxGenerations1*nvars;
+  if Rate == 0
+    options = optimoptions('ga','MaxGenerations',MaxGenerations,...
+                                'MaxStallGenerations',MaxStallGenerations,...
+                                'PopulationSize',PopulationSize,...
+                                'FunctionTolerance',Tolerance);
+  else
+    options = optimoptions('ga','MaxGenerations',MaxGenerations,...
+                                'MaxStallGenerations',MaxStallGenerations,...
+                                'PopulationSize',PopulationSize,...
+                                'FunctionTolerance',Tolerance,...
+                                'MutationFcn', {@mutationuniform, Rate});
+  end
+  if flag_interi
+    [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
+  else
+    [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
+  end
+  x_input_good=x_input;    %Save the output of GA
+  computational_timeGA=toc(start_optimization);
+  previous_evaluation=true;
+  evaluation_opt=evaluation_optGA;
+end
+
+% After GA the variable angle is set to continuous (if discrete)
+if SHIMMING_OPT.PM_NumAngle > 0
+% discrete angle variable are translate to contonuos variable    
+  x_input_good(1,ini(1):fin(1))=x_input_good(1,ini(1):fin(1))*360/SHIMMING_OPT.PM_NumAngle;
+  x_input_Min(1,ini(1):fin(1))=0.;
+  x_input_Max(1,ini(1):fin(1))=360.;
+  SHIMMING_OPT.PM_NumAngle=0;
+end
+
 computational_timePS=0;
 computational_timeFM=0;
-if SHIMMING_OPT.Fmincon
-  start_optimization = tic;
-  fprintf('----OPTIMIZATION with Fmincon----\n');
-  fprintf('N. of parameters: %d\n',nvars);
-  options = optimoptions('fmincon','FunctionTolerance',Tolerance);
-  x_input_start = x_input;
-  [x_input,evaluation_optFM,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
-  computational_timeFM=toc(start_optimization);
-elseif SHIMMING_OPT.Patternsearch
+if SHIMMING_OPT.Patternsearch
+  SHIMMING_OPT.Method_Actual='(PS)';
+  SHIMMING_OPT.Neval=0;
   start_optimization = tic;
   fprintf('----OPTIMIZATION with Patternsearch----\n');
   fprintf('N. of parameters: %d\n',nvars);
-  options = optimoptions('patternsearch','FunctionTolerance',Tolerance);
-  x_input_start = x_input;
-  [x_input,evaluation_optPS,exitflagPS,OutputPS] = patternsearch(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
+  options = optimoptions('patternsearch','FunctionTolerance',Tolerance,'StepTolerance',Tolerance);
+%  options = optimoptions('patternsearch','FunctionTolerance',Tolerance,'StepTolerance',Tolerance,Algorithm="nups");
+  
+  x_input_start = x_input_good;
+  [x_input,~,exitflagPS,OutputPS] = patternsearch(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
   computational_timePS=toc(start_optimization);
+  evaluation_optPS = deviation_in_sphere3(x_input);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
+  if previous_evaluation
+    if evaluation_optPS > evaluation_opt   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
+      fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
+    else
+      evaluation_opt=evaluation_optPS;
+      x_input_good = x_input;
+    end
+  else
+    previous_evaluation=true;
+    evaluation_opt=evaluation_optPS;
+    x_input_good = x_input;
+  end
 end
-
-%=======================================================================
-fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
-fprintf('--------------------------------------------------------\n');
-fprintf('Genetic Algorithm\n');
-fprintf('Exit flag: %d\n',exitflagGA);
-fprintf('Number of generations: %d\n', OutputGA.generations);
-fprintf('%s\n', OutputGA.message);
-fprintf('Computational time: %.1f\n',computational_timeGA);
-fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_optGA);
-evaluation_opt=evaluation_optGA;
-fprintf('--------------------------------------------------------\n');
-
 if SHIMMING_OPT.Fmincon
-  fprintf('--------------------------------------------------------\n');
-  fprintf('Fmincon Algorithm\n');
-  fprintf('Exit flag: %d\n',exitflagFM);
-  fprintf('%s\n', OutputFM.message);
-  fprintf('Computational time: %.1f\n',computational_timeFM);
-  fprintf('Optimal value of Deviation after Fmincon (ppm): %.1f\n',evaluation_optFM);
-  fprintf('--------------------------------------------------------\n');
-  if evaluation_optFM > evaluation_optGA   %Se al termine di Fmincon risultato peggiore, ripristina risultato GA
-    x_input = x_input_start;
-    fprintf('WARNING: Fmincon provides worst result: recovered GA solution\n');
+  SHIMMING_OPT.Method_Actual='(FM)';
+  SHIMMING_OPT.Neval=0;
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with Fmincon----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+%  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'Algorithm','active-set','MaxFunctionEvaluations',5000);
+  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'MaxFunctionEvaluations',5000);
+  x_input_start = x_input_good;
+  [x_input,evaluation_optFM,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
+  computational_timeFM=toc(start_optimization);
+  if previous_evaluation
+    if evaluation_optFM > evaluation_opt   %Se al termine di Fmincon risultato peggiore, ripristina il precedente
+      fprintf('WARNING: Fmincon provides worst result: recovered best solution\n');
+    else
+      evaluation_opt=evaluation_optFM;
+      x_input_good = x_input;
+    end
   else
     evaluation_opt=evaluation_optFM;
-  end
-elseif SHIMMING_OPT.Patternsearch
-  fprintf('--------------------------------------------------------\n');
-  fprintf('Patternsearch Algorithm\n');
-  fprintf('Exit flag: %d\n',exitflagPS);
-  fprintf('%s\n', OutputPS.message);
-  fprintf('Computational time: %.1f\n',computational_timePS);
-  fprintf('Optimal value of Deviation after Patternsearch (ppm): %.1f\n',evaluation_optPS);
-  fprintf('--------------------------------------------------------\n');
-  if evaluation_optPS > evaluation_optGA   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
-    x_input = x_input_start;
-    fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
-  else
-    evaluation_opt=evaluation_optPS;
+    x_input_good = x_input;
   end
 end
 %=======================================================================
 computational_time=computational_timeGA+computational_timePS+computational_timeFM;
 fprintf('Total computational time: %.1f\n',computational_time);
+%
+fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
+if SHIMMING_OPT.GA
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Genetic Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagGA);
+  fprintf('Number of generations: %d\n', OutputGA.generations);
+  fprintf('Computational time: %.1f\n',computational_timeGA);
+  fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_optGA);
+  fprintf('--------------------------------------------------------\n');
+end
+if SHIMMING_OPT.Patternsearch
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Patternsearch Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagPS);
+  fprintf('Computational time: %.1f\n',computational_timePS);
+  fprintf('Optimal value of Deviation after Patternsearch (ppm): %.1f\n',evaluation_optPS);
+  fprintf('--------------------------------------------------------\n');
+end
+if SHIMMING_OPT.Fmincon
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Fmincon Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagFM);
+  fprintf('Computational time: %.1f\n',computational_timeFM);
+  fprintf('Optimal value of Deviation after Fmincon (ppm): %.1f\n',evaluation_optFM);
+  fprintf('--------------------------------------------------------\n');
+end
+%=======================================================================
 
-[dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input);
+[dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input_good);
 
 % Reconstruct position of PM added in shimming and adjust final field in DSV
 configuration_at_end(pos_in_sector,dir_mag_shim);
+[Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+fprintf('Ending situation - \n');
+fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
+fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
+
 if SHIMMING_OPT.Run == 1
     mkdir(SHIMMING_OPT.ShimmingDir);
 end
@@ -264,15 +334,17 @@ Deviation_after_optimization=evaluation_opt;
 save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Delta_magnets','Deviation_after_optimization');
 save(filemat,'Code_Version','input_file_description','input_file_version','-append');
 save(filemat,'computational_time','-append');
-save(filemat,'OutputGA','-append');
+if SHIMMING_OPT.GA
+  save(filemat,'OutputGA','-append');
+end
 if SHIMMING_OPT.Fmincon
   save(filemat,'OutputFM','-append');
-elseif SHIMMING_OPT.Patternsearch
+end
+if SHIMMING_OPT.Patternsearch
   save(filemat,'OutputPS','-append');
 end
 
 % Extract general info for optimization to be saved
-
 if SHIMMING_GEO.sector_type == 1
   INFO_SHIM_GEO = rmfield (SHIMMING_GEO,{'MatrixShimming','Xslot','Yslot'});
 elseif SHIMMING_GEO.sector_type == 2
@@ -283,14 +355,8 @@ INFO_SHIM_OPT = rmfield (SHIMMING_OPT,{'B5'});
 save(filemat,'INFO_SHIM_GEO','INFO_SHIM_OPT','-append');
 save(filemat,'SIMUL_DATA','TEMPERATURE','-append');
 %
-[Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
-fprintf('Ending situation - \n');
-fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
-fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
-fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
-
-Angle_min=min(x_input(1,ini(1):fin(1)));
-Angle_max=max(x_input(1,ini(1):fin(1)));
+Angle_min=min(x_input_good(1,ini(1):fin(1)));
+Angle_max=max(x_input_good(1,ini(1):fin(1)));
 fprintf('Min and Max rotational angle (degree): %.1f %.1f\n',Angle_min,Angle_max);
 Bmean_mT=Bmean*1000;
 save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
@@ -299,6 +365,13 @@ save(filemat,'MATERIALI','POINTS','-append');   %Servono per poter usare il prog
 
 fprintf('Results of shimming saved in file: %s\n',filemat);
 fprintf('#######################################################\n');
+
+if evaluation_opt > SHIMMING_OPT.original_deviation_ppm
+  fprintf('WARNING: the starting value of Deviation before this optimization step was better\n');
+  fprintf('DELETE this run\n');
+  fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
+  fprintf('Deviation after this step (ppm): %.1f\n',evaluation_opt);
+end
 
 end
 
@@ -316,13 +389,21 @@ function [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input)
 global SHIMMING_OPT
 
 [ini,fin] = ini_fin_blocchi(SHIMMING_OPT.nvar_block);
+
+clear x_input2
+if SHIMMING_OPT.PM_NumAngle == 0
+  x_input2=x_input(1,ini(1):fin(1));
+else
+  x_input2=x_input(1,ini(1):fin(1))*360/SHIMMING_OPT.PM_NumAngle;
+end
+
 if SHIMMING_OPT.PM_angle_equal_Z
   Nrused=length(SHIMMING_OPT.ring_to_be_used);
   for Nr=1:Nrused
-    dir_mag_shim(ini(1)+fin(1)*(Nr-1):fin(1)+fin(1)*(Nr-1),1)=transpose(x_input(1,ini(1):fin(1)));
+    dir_mag_shim(ini(1)+fin(1)*(Nr-1):fin(1)+fin(1)*(Nr-1),1)=transpose(x_input2(1,ini(1):fin(1)));
   end
 else
-  dir_mag_shim=transpose(x_input(1,ini(1):fin(1)));
+  dir_mag_shim=transpose(x_input2(1,ini(1):fin(1)));
 end
 if SHIMMING_OPT.PM_fixed
 % Posizione PM fissata
@@ -341,7 +422,7 @@ if SHIMMING_OPT.PM_fixed
   end
 else
 % Posizione PM definita da ottimizzatore
-  pos_in_sector=int32(transpose(x_input(1,ini(2):fin(2))));
+  pos_in_sector=int32(round(transpose(x_input(1,ini(2):fin(2)))));
 end
 return
 end
@@ -441,8 +522,8 @@ if ~isfield(toml_data.shimming,'opt_rules')
     ierr=1;
     return
 end
-if ~isfield(toml_data.shimming.opt_rules,'PM_angleMax')
-    fprintf('Field [shimming.opt_rules.PM_angleMax] not present\n');
+if ~isfield(toml_data.shimming.opt_rules,'PM_NumAngle')
+    fprintf('Field [shimming.opt_rules.PM_NumAngle] not present\n');
     ierr=1;
     return
 end
@@ -507,9 +588,21 @@ if isfield(toml_data.shimming.opt_rules,'PM_angle_equal_Z')
   SHIMMING_OPT.PM_angle_equal_Z=toml_data.shimming.opt_rules.PM_angle_equal_Z;
 end
 
-SHIMMING_OPT.Variazione_angolo_PM_shim=toml_data.shimming.opt_rules.PM_angleMax;
+SHIMMING_OPT.PM_NumAngle=toml_data.shimming.opt_rules.PM_NumAngle;
 
-SHIMMING_OPT.PM_angle_initial = false;
+if SHIMMING_OPT.PM_NumAngle == 0
+% angle continuous variable
+  if ~isfield(toml_data.shimming.opt_rules,'PM_angleMax')
+      fprintf('Field [shimming.opt_rules.PM_angleMax] not present\n');
+      ierr=1;
+      return
+  end
+  SHIMMING_OPT.Variazione_angolo_PM_shim=toml_data.shimming.opt_rules.PM_angleMax;
+end
+
+% Flag che definisce posizione iniziale magneti:
+% (0=angolo 0 deg, 1=angolo dato da posizione, 2=Halbach rule)
+SHIMMING_OPT.PM_angle_initial = 0;
 if isfield(toml_data.shimming.opt_rules,'PM_angle_initial')
   SHIMMING_OPT.PM_angle_initial=toml_data.shimming.opt_rules.PM_angle_initial;
 end
@@ -596,10 +689,22 @@ if isfield(toml_data.shimming.opt_rules,'PopulationSize')
 else
   SHIMMING_OPT.PopulationSize=200;
 end
+if isfield(toml_data.shimming.opt_rules,'MutationRate')
+  SHIMMING_OPT.MutationRate=toml_data.shimming.opt_rules.MutationRate;   %Mutation function uniform for rate dato
+else
+  SHIMMING_OPT.MutationRate=0';  %Mutation function di default (gaussian)
+end
+
 if isfield(toml_data.shimming.opt_rules,'Tolerance')
   SHIMMING_OPT.Tolerance=toml_data.shimming.opt_rules.Tolerance;
 else
   SHIMMING_OPT.Tolerance=1e-4;
+end
+
+if isfield(toml_data.shimming.opt_rules,'GA')
+  SHIMMING_OPT.GA=toml_data.shimming.opt_rules.GA;
+else
+  SHIMMING_OPT.GA=true;
 end
 
 if isfield(toml_data.shimming.opt_rules,'Patternsearch')
@@ -793,15 +898,12 @@ if SHIMMING_GEO.sector_type == 1
         end
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          if ~SHIMMING_OPT.PM_angle_initial
-            angolo_OR=0;    %zero
-          else
-            aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-            if aa<0
-              aa=aa+2*pi;
-            end
-            angolo_OR=2*aa/pi*180;    %Halbach ideal
+          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
+          if aa<0
+            aa=aa+2*pi;
           end
+          angolo_OR=SHIMMING_OPT.PM_angle_initial*aa/pi*180;
+ 
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
@@ -846,12 +948,8 @@ elseif SHIMMING_GEO.sector_type == 2
         end
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);   %Halbach ideal
-          if ~SHIMMING_OPT.PM_angle_initial
-            angolo_OR=0;    %zero
-          else
-            angolo_OR=2*angolo;    %Halbach ideal
-          end
+          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
+          angolo_OR=SHIMMING_OPT.PM_angle_initial*angolo;
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
@@ -914,15 +1012,11 @@ if SHIMMING_GEO.sector_type == 1
         ii=ii+1;
         ipos=pos_in_sector(ii,1);
         if ipos > 0
-          if ~SHIMMING_OPT.PM_angle_initial
-            angolo_OR=0;    %zero
-          else
-            aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-            if aa<0
-              aa=aa+2*pi;
-            end
-            angolo_OR=2*aa/pi*180;    %Halbach ideal
+          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
+          if aa<0
+            aa=aa+2*pi;
           end
+          angolo_OR=SHIMMING_OPT.PM_angle_initial*aa/pi*180;
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
@@ -966,11 +1060,7 @@ elseif SHIMMING_GEO.sector_type == 2
         ipos=pos_in_sector(ii,1);
         if ipos > 0
           angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
-          if ~SHIMMING_OPT.PM_angle_initial
-            angolo_OR=0;    %zero
-          else
-            angolo_OR=2*angolo;    %Halbach ideal
-          end
+          angolo_OR=SHIMMING_OPT.PM_angle_initial*angolo;    %Halbach ideal
           if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
             MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
             MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
@@ -1058,7 +1148,10 @@ elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
   deviation_tot_ppm=DEV2_ppm;
 end
 
-fprintf('Added magnets: %d - deviation_tot_ppm: %.1f\n',MAGNETI_GEO.Ndipoli_tot,deviation_tot_ppm);
-
+SHIMMING_OPT.Neval=SHIMMING_OPT.Neval+1;
+if mod(SHIMMING_OPT.Neval,50)==0
+    fprintf('%s Fval: %d Added magnets: %d - deviation_tot_ppm: %.1f\n',SHIMMING_OPT.Method_Actual,...
+    SHIMMING_OPT.Neval,MAGNETI_GEO.Ndipoli_tot,deviation_tot_ppm);
+end
 return
 end

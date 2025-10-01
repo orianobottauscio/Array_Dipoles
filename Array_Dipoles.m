@@ -19,7 +19,7 @@ function Array_Dipoles(varargin)
 %
 % Author: O. Bottauscio (first version: 2025)
 %-------------------------------------------------------------------------
-Code_Version='1.1';
+Code_Version='1.2';
 
 fprintf('Code: Array_Dipoles, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -151,8 +151,7 @@ if strcmp(SIMUL_DATA.Type,'DET')
 %
   if TORQUE.flag
     fprintf('Starting computation of PM torque...\n');
-    flag_all=false;
-    [TORQUE] = dipoles_sub.compute_torque(flag_all,TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0);
+    [TORQUE] = dipoles_sub.compute_torque(TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0);
     fprintf('Done\n');
     file_torque=TORQUE.OutputFile;
     momento_total=TORQUE.momento_total;

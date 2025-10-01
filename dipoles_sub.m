@@ -355,7 +355,8 @@ function [Hx5,Hy5,Hz5]=field_plus2_par(Hx5,Hy5,Hz5,xdip,ydip,zdip,U2,dimU,dimV,d
         b1=abs(uP+(-1).^k.*dimU/2).*(wP+(-1).^m.*dimW/2);
         b2=abs(vP+(-1).^l.*dimV/2).*a;
         a3=atan(b1./b2);
-        Hv=Hv-(-1).^(k+l+m).*(a1.*a2)./(abs(a1).*abs(a2)).*a3;
+        Hv=Hv-(-1).^(k+l+m).*sign(a1).*sign(a2).*a3;
+%        Hv=Hv-(-1).^(k+l+m).*(a1.*a2)./(abs(a1).*abs(a2)).*a3;
       end
     end
   end
@@ -416,7 +417,7 @@ function [Hx,Hy,Hz]=field_plus2_serial(xdip,ydip,zdip,U2,dimU,dimV,dimW,valore_J
 end
 
 
-function  [TORQUE] = compute_torque(flag_all,TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0)
+function  [TORQUE] = compute_torque(TORQUE,MAGNETI_GEO,MAGNETI_STATO,Mu0)
 TORQUE.momento_total=size(MAGNETI_GEO.Ndipoli_tot,1);
 Dipole_group_ini=zeros(MAGNETI_GEO.Nlist,1);
 Dipole_group_fin=zeros(MAGNETI_GEO.Nlist,1);
@@ -451,7 +452,7 @@ for Nr=1:MAGNETI_GEO.Nlist
         aa=aa+2*pi;
     end
     pos_angolare(ii,1)=aa/pi*180;
-    if flag_all
+    if TORQUE.all
        nd_ini=1;
        nd_fin=MAGNETI_GEO.Ndipoli_tot;
     else
@@ -486,6 +487,8 @@ for Nr=1:MAGNETI_GEO.Nlist
   clear tt
   tt=cross(JJ,BB);
   TORQUE.momento_total(i1:i2,1)=tt(:,3).*MAGNETI_GEO.cubo_dimU2(i1:i2,1).*MAGNETI_GEO.cubo_dimV2(i1:i2,1).*MAGNETI_GEO.cubo_dimW2(i1:i2,1)/Mu0;
+  TORQUE.momento_total(i1:i2,2)=tt(:,2).*MAGNETI_GEO.cubo_dimU2(i1:i2,1).*MAGNETI_GEO.cubo_dimV2(i1:i2,1).*MAGNETI_GEO.cubo_dimW2(i1:i2,1)/Mu0;
+  TORQUE.momento_total(i1:i2,3)=tt(:,1).*MAGNETI_GEO.cubo_dimU2(i1:i2,1).*MAGNETI_GEO.cubo_dimV2(i1:i2,1).*MAGNETI_GEO.cubo_dimW2(i1:i2,1)/Mu0;
 end
 return
 end

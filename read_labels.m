@@ -125,7 +125,7 @@ if angmod
   end
   MAGNETI_GEO.file_momento_torcente=toml_data.pm.modgeo.file;
   aus=load(MAGNETI_GEO.file_momento_torcente);
-  MAGNETI_GEO.momento_torcente=aus.momento_total;
+  MAGNETI_GEO.momento_torcente=aus.momento_total(:,1);
   clear aus;
   if ~isfield(toml_data.pm.modgeo,'angle')
     fprintf('Field [pm.modgeo.angle] not present\n');
@@ -341,6 +341,12 @@ else
   TORQUE.flag=false;
 end    
 if TORQUE.flag
+  if isfield(toml_data.torque,'all')
+    TORQUE.all=toml_data.torque.all;
+  else
+    TORQUE.all=false;
+  end
+  TORQUE.OutputFile=toml_data.torque.outputfile;
   if ~isfield(toml_data.torque,'outputfile')
     fprintf('Field [torque.outputfile] not present\n');
     ierr=1;

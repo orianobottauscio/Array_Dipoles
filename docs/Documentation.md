@@ -329,13 +329,15 @@ The table `[torque]` is used to activate the computation of torque acting on PMs
 If this section is not present, the torque computation is not activated.
 
 Value `compute`: flag to activate the torque computation.
+Value `all`: flag to activate the computation with interaction of all PMs or only the one in the ring.
 Value `outputfile`: filename of the matlab output file.
 
 
-In the following example the torque computation is activated and the output data are stored in file 'torque.mat'.
+In the following example the torque computation is activated with only contributions coming from PMs of the same ring and the output data are stored in file 'torque.mat'.
 ```toml
 [torque]
 compute=true
+all=false
 outputfile='torque.mat'
 ```
 
