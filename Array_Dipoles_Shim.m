@@ -14,15 +14,14 @@ function Array_Dipoles_Shim(varargin)
 %
 % Author: O. Bottauscio (first version: 2025)
 %-------------------------------------------------------------------------
-global MAGNETI_GEO
-global SHIMMING_OPT
-global SHIMMING_GEO
-global MAGNETI_STATO
-global MATERIALI
-global TEMPERATURE
-global SIMUL_DATA
-global POINTS
-Code_Version='0.24';
+global Neval_function
+global Neval_function_write
+global Method_Actual
+global PM_position
+global PM_presence_save
+
+
+Code_Version='2.1.0';
 
 fprintf('Code: Array_Dipoles_Shim, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -87,7 +86,7 @@ end
 
 % Read measurements in DSV
 POINTS = struct;
-[ierr,POINTS] = input_DSVMeas(toml_data,POINTS);
+[ierr,POINTS,typemis] = input_DSVMeas(toml_data,POINTS);
 if ierr > 0
     return
 end
@@ -113,78 +112,85 @@ end
 
 SHIMMING_OPT.Mu0=Mu0;
 
-[Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
-fprintf('Starting situation - \n');
-fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
-fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
-fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
 
+if strcmpi(typemis,'V')   %Volume data in DSV
+  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+  fprintf('Volume measurements in DSV - \n');
+  fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+  fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
+  fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
+  if strcmpi(SHIMMING_OPT.DevOpt,'DEV3')
+      fprintf('Opt. DEV3 not compatible with volume measurements\n');
+      return
+  end
+elseif strcmpi(typemis,'S')   %Surface data in DSV
+  [Bmin,Bmax,B0,DEV3_ppm] = util.variability3(SHIMMING_OPT.B5);
+  fprintf('Surface measurements in DSV - \n');
+  fprintf('Bmin,Bmax,B0 [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,B0*1000);
+  fprintf('DEV3 [ppm]: %f\n',DEV3_ppm);
+  if strcmpi(SHIMMING_OPT.DevOpt,'DEV1') || strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
+      fprintf('Opt. DEV1/DEV2 not compatible with surface measurements\n');
+      return
+  end
+end
+
+%Parametro usato per ottimizzazione
 if strcmpi(SHIMMING_OPT.DevOpt,'DEV1')
-  SHIMMING_OPT.original_deviation_ppm=DEV1_ppm;
+  SHIMMING_OPT.original_deviation=DEV1_ppm;
 elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
-  SHIMMING_OPT.original_deviation_ppm=DEV2_ppm;
-end
+  SHIMMING_OPT.original_deviation=DEV2_ppm;
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV3')
+  SHIMMING_OPT.original_deviation=DEV3_ppm;
+elseif strcmpi(SHIMMING_OPT.DevOpt,'dB')
+  SHIMMING_OPT.original_deviation=(Bmax-Bmin)*1e6;
+end  
 
-% Block 1: PM rotation (-Variazione_angolo_PM_shim:Variazione_angolo_PM_shim)
-% Block 2 (optional): PM position in sector (0=non PM) (0:max_PM_per_sector)
 
-if SHIMMING_OPT.PM_angle_equal_Z
-% rotazioni identiche per i vari ring
-  SHIMMING_OPT.nvar_block(1)=SHIMMING_OPT.PM_add_per_sector*SHIMMING_OPT.Nsector_Shim;
+% Define the positions on the PMs for the optimization run
+[SHIMMING_OPT] = define_PM_positions(SHIMMING_OPT,SHIMMING_GEO);
+
+% One block of PMs with PM rotation (0:360). If the angle is > 360 the PM
+% is not present
+nvars=SHIMMING_OPT.Ndipoli_tot_shim_max;
+x_input_Min(1,1:nvars)=SHIMMING_OPT.PM_AngleVar(1);
+x_input_Max(1,1:nvars)=SHIMMING_OPT.PM_AngleVar(2);
+
+% Tipo di funzione obiettivo
+if SIMUL_DATA.reaction || SIMUL_DATA.NL
+   fprintf('Optimization with non-ideal magnets\n');
+   ideal_dipole=0;
+   Jresidua_magneti=0;   %Non usato
 else
-% rotazioni diverse per i vari ring
-  SHIMMING_OPT.nvar_block(1)=SHIMMING_OPT.Ndipoli_tot_shim_max;
+   fprintf('Optimization with ideal magnets\n');
+   ideal_dipole=1;
+   Temperature_magneti=TEMPERATURE.Tactual;
+   nmat=SHIMMING_OPT.PM_material;
+   Jresidua_ref=MATERIALI.JrNL(nmat,1);
+   Tref=MATERIALI.Tref(nmat,1);
+   JvT=MATERIALI.JvT(nmat,1);
+   Jresidua_magneti = util.Jr_versus_T(JvT,Temperature_magneti,Tref,Jresidua_ref);  
 end
-SHIMMING_OPT.nvar_block(2)=SHIMMING_OPT.Ndipoli_tot_shim_max;
 
-[ini,fin] = ini_fin_blocchi(SHIMMING_OPT.nvar_block);
+f = @(x_input) deviation_in_sphere3(x_input,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                            SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti);
 
-flag_interi=false;
-if SHIMMING_OPT.PM_fixed
-% Posizione PM fissata (non prevista assenza PM)
-  nvars=SHIMMING_OPT.nvar_block(1);
-  if SHIMMING_OPT.PM_NumAngle == 0
-    x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
-    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
-  else
-    x_input_Min(1,ini(1):fin(1))=0;
-    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.PM_NumAngle-1;   %Numero di step discreti dell'angolo
-    intcon=ini(1):fin(1);   %il bloccho 1 degli input è di interi
-    flag_interi=true;
-  end
-else
-% Posizione PM scelta da ottimizzazione
-  nvars=sum(SHIMMING_OPT.nvar_block);
-  if SHIMMING_OPT.PM_NumAngle == 0
-    intcon=ini(2):fin(2);   %il blocco 2 degli input è di interi
-    x_input_Min(1,ini(1):fin(1))=-SHIMMING_OPT.Variazione_angolo_PM_shim;
-    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.Variazione_angolo_PM_shim;
-    x_input_Min(1,ini(2):fin(2))=0;   % La posizione 0 significa PM non presente
-    x_input_Max(1,ini(2):fin(2))=SHIMMING_GEO.Max_PM_per_settore;
-  else
-    intcon=ini(1):fin(2);   %sia il blocco 1 che 2 degli input è di interi
-    x_input_Min(1,ini(1):fin(1))=0;
-    x_input_Max(1,ini(1):fin(1))=SHIMMING_OPT.PM_NumAngle-1;   %Numero di step discreti dell'angolo
-    x_input_Min(1,ini(2):fin(2))=0;   % La posizione 0 significa PM non presente
-    x_input_Max(1,ini(2):fin(2))=SHIMMING_GEO.Max_PM_per_settore;
-  end
-  flag_interi=true;
-end
-MaxGenerations1=SHIMMING_OPT.MaxGenerations1;
-MaxStallGenerations=SHIMMING_OPT.MaxStallGenerations;
-PopulationSize=SHIMMING_OPT.PopulationSize;
+%---------------------------------------------------------------
+%  Section of Global Algorithm optimization
+%---------------------------------------------------------------
+SHIMMING_OPT.GA=false;
+SHIMMING_OPT.SW=false;
+SHIMMING_OPT.SA=false;
+SHIMMING_OPT.WO=false;
+PM_position=true;   %N. PM variabile
 Tolerance=SHIMMING_OPT.Tolerance;
-Rate=SHIMMING_OPT.MutationRate;
-
-
-f = @(x_input) deviation_in_sphere3(x_input);
-x_input_good=(x_input_Min+x_input_Max)/2;   %Serve per input metodi successivi (se non viene usato GA)
-previous_evaluation=false;
-
-computational_timeGA=0;
-if SHIMMING_OPT.GA
-  SHIMMING_OPT.Method_Actual='(GA)';
-  SHIMMING_OPT.Neval=0;
+Neval_function=0;
+Neval_function_write=true;
+if strcmpi(SHIMMING_OPT.Global_Algorithm,'GA')
+  MaxGenerations1=SHIMMING_OPT.MaxGenerations1;
+  MaxStallGenerations=SHIMMING_OPT.MaxStallGenerations;
+  PopulationSize=SHIMMING_OPT.PopulationSize;
+  Rate=SHIMMING_OPT.MutationRate;
+  Method_Actual='(GA)';
   start_optimization = tic;
   fprintf('----OPTIMIZATION with GA----\n');
   fprintf('N. of parameters: %d\n',nvars);
@@ -201,118 +207,342 @@ if SHIMMING_OPT.GA
                                 'FunctionTolerance',Tolerance,...
                                 'MutationFcn', {@mutationuniform, Rate});
   end
-  if flag_interi
-    [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],intcon,options);
-  else
-    [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
-  end
+  [x_input,evaluation_optGA,exitflagGA,OutputGA] = ga(f,nvars,[],[],[],[],x_input_Min,x_input_Max,[],[],options);
   x_input_good=x_input;    %Save the output of GA
-  computational_timeGA=toc(start_optimization);
-  previous_evaluation=true;
+  computational_time_GA=toc(start_optimization);
   evaluation_opt=evaluation_optGA;
-end
+  fprintf('Number of generations: %d\n', OutputGA.generations);
+  fprintf('Computational time: %.1f\n',computational_time_GA);
+  fprintf('Optimal value of Deviation after GA: %.1f\n',evaluation_optGA);
+  SHIMMING_OPT.GA=true;
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'SW')
+  Method_Actual='(SW)';
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with ParticleSwarm----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+  options = optimoptions('particleswarm','FunctionTolerance',Tolerance);
+%  options = optimoptions('particleswarm','FunctionTolerance',Tolerance,'HybridFcn',@fmincon);
+  [x_input,~,exitflagSW,OutputSW] = particleswarm(f,nvars,x_input_Min,x_input_Max,options);
+  evaluation_optSW = deviation_in_sphere3(x_input,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                                  SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
+  x_input_good=x_input;    %Save the output of SW
+  computational_time_GA=toc(start_optimization);
+  evaluation_opt=evaluation_optSW;
+  fprintf('Computational time: %.1f\n',computational_time_GA);
+  fprintf('Optimal value of Deviation after SW: %.1f\n',evaluation_optSW);
+  SHIMMING_OPT.SW=true;
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'SA')
+  Method_Actual='(SA)';
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with Simulated Annealing----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+%  options = optimoptions('simulannealbnd','FunctionTolerance',Tolerance,'HybridFcn',@fmincon);
+  options = optimoptions('simulannealbnd','FunctionTolerance',Tolerance);
+  [x_input,~,exitflagSA,OutputSA] = simulannealbnd(f,x_input_start,x_input_Min,x_input_Max,options);
+  evaluation_optSA = deviation_in_sphere3(x_input,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                                  SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
+  x_input_good=x_input;    %Save the output of SA
+  computational_time_GA=toc(start_optimization);
+  evaluation_opt=evaluation_optSA;
+  fprintf('Computational time: %.1f\n',computational_time_GA);
+  fprintf('Optimal value of Deviation after SA: %.1f\n',evaluation_optSA);
+  SHIMMING_OPT.SA=true;
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'WO')
+  Method_Actual='(WO)';
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with Whale Optimization ----\n');
+  fprintf('N. of parameters: %d\n',nvars);
+  SearchAgents_no=30; % Number of search agents
+  Max_iteration=500; % Maximum numbef of iterations
+  [evaluation_optWO,x_input_good,WOA_cg_curve]=woa.WOA(SearchAgents_no,Max_iteration,x_input_Min,x_input_Max,nvars,f);
+  computational_time_GA=toc(start_optimization);
+  evaluation_opt=evaluation_optWO;
+  fprintf('Computational time: %.1f\n',computational_time_GA);
+  fprintf('Optimal value of Deviation after WO: %.1f\n',evaluation_optWO);
+  SHIMMING_OPT.WO=true;
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'Null')
+  computational_time_GA=0;
+  x_input_good=(x_input_Min+x_input_Max)/2;   %Serve per input metodi successivi (se non viene usato GA)
+  evaluation_opt = f(x_input_good);
+  fprintf('Starting Deviation value: %.1f\n',evaluation_opt);
+end    
 
-% After GA the variable angle is set to continuous (if discrete)
-if SHIMMING_OPT.PM_NumAngle > 0
-% discrete angle variable are translate to contonuos variable    
-  x_input_good(1,ini(1):fin(1))=x_input_good(1,ini(1):fin(1))*360/SHIMMING_OPT.PM_NumAngle;
-  x_input_Min(1,ini(1):fin(1))=0.;
-  x_input_Max(1,ini(1):fin(1))=360.;
-  SHIMMING_OPT.PM_NumAngle=0;
+%---------------------------------------------------------------
+% Congela le posizioni dei PMs che portano a valore ottimale
+% della Global Optimization (PM_presence_save)
+% Riduce il numero di variabili in input (No. PMs fissato)
+%---------------------------------------------------------------
+if ~strcmpi(SHIMMING_OPT.Global_Algorithm,'Null')
+  [~,PM_presence_save] = from_input_to_PM(x_input_good);
+  if sum(PM_presence_save)>0
+    PM_position=false;   %N. PM fissato
+    x_input_good_rid=x_input_good(PM_presence_save>0);
+    nvars_rid=sum(PM_presence_save);
+    fprintf('No. Added magnets after Global Optimization (kept fixed): %d\n',nvars_rid);
+  else
+    x_input_good_rid=x_input_good;
+    nvars_rid=nvars;
+    fprintf('No added magnets after Global Optimization\n');
+  end
+else
+  x_input_good_rid=x_input_good;
+  nvars_rid=nvars;
 end
+%---------------------------------------------------------------
+%  Section of Local Algorithm optimization
+%  In questa fase, non modifica più il numero di PMs usati
+%  che sono quelli stabiliti dalla variabile 'PM_presence_save'
+%---------------------------------------------------------------
+SHIMMING_OPT.FM=false;
+SHIMMING_OPT.PS=false;
+Var_input=SHIMMING_OPT.Local_Var_input;  %Variazioni angolo per Local Optimization
 
-computational_timePS=0;
-computational_timeFM=0;
-if SHIMMING_OPT.Patternsearch
-  SHIMMING_OPT.Method_Actual='(PS)';
-  SHIMMING_OPT.Neval=0;
+if strcmpi(SHIMMING_OPT.Local_Algorithm,'PS')
+  Method_Actual='(PS)';
+  Neval_function=0;
+  Neval_function_write=true;
   start_optimization = tic;
   fprintf('----OPTIMIZATION with Patternsearch----\n');
-  fprintf('N. of parameters: %d\n',nvars);
+  fprintf('N. of parameters: %d\n',nvars_rid);
   options = optimoptions('patternsearch','FunctionTolerance',Tolerance,'StepTolerance',Tolerance);
 %  options = optimoptions('patternsearch','FunctionTolerance',Tolerance,'StepTolerance',Tolerance,Algorithm="nups");
-  
-  x_input_start = x_input_good;
-  [x_input,~,exitflagPS,OutputPS] = patternsearch(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
-  computational_timePS=toc(start_optimization);
-  evaluation_optPS = deviation_in_sphere3(x_input);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
-  if previous_evaluation
-    if evaluation_optPS > evaluation_opt   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
-      fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
-    else
-      evaluation_opt=evaluation_optPS;
-      x_input_good = x_input;
-    end
+  x_input_start = x_input_good_rid;
+  [x_input_rid,~,exitflagPS,OutputPS] = patternsearch(f,x_input_start,[],[],[],[],...
+                                    x_input_start-Var_input,x_input_start+Var_input,[],options);
+  evaluation_optPS = deviation_in_sphere3(x_input_rid,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                                  SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
+  computational_time_LA=toc(start_optimization);
+  fprintf('Computational time: %.1f\n',computational_time_LA);
+  fprintf('Optimal value of Deviation after PS: %.1f\n',evaluation_optPS);
+  if evaluation_optPS > evaluation_opt   %Se al termine di Patternsearch risultato peggiore, ripristina risultato GA
+    fprintf('WARNING: Patternsearch provides worst result: recovered GA solution\n');
   else
-    previous_evaluation=true;
     evaluation_opt=evaluation_optPS;
-    x_input_good = x_input;
+    x_input_good_rid = x_input_rid;
   end
-end
-if SHIMMING_OPT.Fmincon
-  SHIMMING_OPT.Method_Actual='(FM)';
-  SHIMMING_OPT.Neval=0;
+  SHIMMING_OPT.PS=true;
+elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'FM')
+  Method_Actual='(FM)';
+  Neval_function=0;
+  Neval_function_write=true;
   start_optimization = tic;
   fprintf('----OPTIMIZATION with Fmincon----\n');
-  fprintf('N. of parameters: %d\n',nvars);
-%  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'Algorithm','active-set','MaxFunctionEvaluations',5000);
-  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'MaxFunctionEvaluations',5000);
-  x_input_start = x_input_good;
-  [x_input,evaluation_optFM,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],x_input_Min,x_input_Max,[],options);
-  computational_timeFM=toc(start_optimization);
-  if previous_evaluation
-    if evaluation_optFM > evaluation_opt   %Se al termine di Fmincon risultato peggiore, ripristina il precedente
-      fprintf('WARNING: Fmincon provides worst result: recovered best solution\n');
-    else
-      evaluation_opt=evaluation_optFM;
-      x_input_good = x_input;
-    end
+  fprintf('N. of parameters: %d\n',nvars_rid);
+  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'Algorithm','sqp','MaxFunctionEvaluations',5000);
+%  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'MaxFunctionEvaluations',5000);
+  x_input_start = x_input_good_rid;
+  [x_input_rid,~,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],...
+      x_input_start-Var_input,x_input_start+Var_input,[],options);
+  evaluation_optFM = deviation_in_sphere3(x_input_rid,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                                  SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti);   %Effettua una rivalutazione della funzione obiettivo per casi nonlinear
+  computational_time_LA=toc(start_optimization);
+  fprintf('Computational time: %.1f\n',computational_time_LA);
+  fprintf('Optimal value of Deviation after FM: %.1f\n',evaluation_optFM);
+  if evaluation_optFM > evaluation_opt   %Se al termine di Fmincon risultato peggiore, ripristina il precedente
+    fprintf('WARNING: Fmincon provides worst result: recovered best solution\n');
   else
     evaluation_opt=evaluation_optFM;
-    x_input_good = x_input;
+    x_input_good_rid = x_input_rid;
   end
+  SHIMMING_OPT.FM=true;
+elseif contains(SHIMMING_OPT.Local_Algorithm,'+MC')
+  Max_iter=200;
+  Max_iter_noChange=30;
+  Max_fval=700;
+  N_estrazioni=SHIMMING_OPT.MC_extraction;
+  Neval_function=0;
+  start_optimization = tic;
+  x_input_start = x_input_good_rid;
+  if strcmpi(SHIMMING_OPT.Local_Algorithm,'LSQ+MC')
+    Method_Actual='(LSQ+MC)';
+    Neval_function_write=false;
+    fprintf('----OPTIMIZATION with LSQ+MC----\n');
+    fprintf('N. of parameters: %d\n',nvars_rid);
+    options = optimoptions('lsqnonlin','Algorithm','trust-region-reflective','FunctionTolerance',...
+        Tolerance,'MaxFunctionEvaluations',Max_fval,'display','off','FinDiffRelStep',1e-4);
+    iter_noChange=0;
+    iter=0;
+    while iter_noChange<=Max_iter_noChange && iter <= Max_iter
+      iter=iter+1;
+      [x_input_rid,~,exitflagLS,~] = lsqnonlin(f,x_input_start,x_input_start-Var_input,x_input_start+Var_input,...
+                                 [],[],[],[],[],options);
+      [x_output,evaluation_optMC] = monte_carlo.MC_opt(f,x_input_rid,N_estrazioni,Var_input,nvars_rid);
+      if evaluation_optMC < evaluation_opt
+        evaluation_opt = evaluation_optMC;
+        x_input_good_rid=x_output;
+        iter_noChange=0;
+      else
+        iter_noChange=iter_noChange+1;
+      end
+      x_input_start = x_output;
+      fprintf('Iter No. %d - Deviation value: %.1f\n',iter,evaluation_opt);
+    end
+    computational_time_LA=toc(start_optimization);
+    fprintf('Computational time: %.1f\n',computational_time_LA);
+    fprintf('Optimal value of Deviation after LSQ+MC: %.1f\n',evaluation_opt);
+  elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'PS+MC')
+    Method_Actual='(PS+MC)';
+    Neval_function_write=false;
+    fprintf('----OPTIMIZATION with PS+MC----\n');
+    fprintf('N. of parameters: %d\n',nvars_rid);
+    options = optimoptions('patternsearch','FunctionTolerance',Tolerance,'StepTolerance',Tolerance);
+    iter_noChange=0;
+    iter=0;
+    while iter_noChange<=Max_iter_noChange && iter <= Max_iter
+      iter=iter+1;
+      [x_input_rid,~,exitflagPS,~] = patternsearch(f,x_input_start,[],[],[],[],...
+                                 x_input_start-Var_input,x_input_start+Var_input,[],options);
+      [x_output,evaluation_optMC] = monte_carlo.MC_opt(f,x_input_rid,N_estrazioni,Var_input,nvars_rid);
+      if evaluation_optMC < evaluation_opt
+        evaluation_opt = evaluation_optMC;
+        x_input_good_rid=x_output;
+        iter_noChange=0;
+      else
+        iter_noChange=iter_noChange+1;
+      end
+      x_input_start = x_output;
+      fprintf('Iter No. %d - Deviation value: %.1f\n',iter,evaluation_opt);
+    end
+    computational_time_LA=toc(start_optimization);
+    fprintf('Computational time: %.1f\n',computational_time_LA);
+    fprintf('Optimal value of Deviation after PS+MC: %.1f\n',evaluation_opt);
+  elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'FM+MC')
+    Method_Actual='(FM+MC)';
+    Neval_function_write=false;
+    fprintf('----OPTIMIZATION with FM+MC----\n');
+    fprintf('N. of parameters: %d\n',nvars_rid);
+    options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'MaxFunctionEvaluations',5000);
+    iter_noChange=0;
+    iter=0;
+    while iter_noChange<=Max_iter_noChange && iter <= Max_iter
+      iter=iter+1;
+      [x_input_rid,~,exitflagFM,~] = fmincon(f,x_input_start,[],[],[],[],...
+                                 x_input_start-Var_input,x_input_start+Var_input,[],options);
+      [x_output,evaluation_optMC] = monte_carlo.MC_opt(f,x_input_rid,N_estrazioni,Var_input,nvars_rid);
+      if evaluation_optMC < evaluation_opt
+        evaluation_opt = evaluation_optMC;
+        x_input_good_rid=x_output;
+        iter_noChange=0;
+      else
+        iter_noChange=iter_noChange+1;
+      end
+      x_input_start = x_output;
+      fprintf('Iter No. %d - Deviation value: %.1f\n',iter,evaluation_opt);
+    end
+    computational_time_LA=toc(start_optimization);
+    fprintf('Computational time: %.1f\n',computational_time_LA);
+    fprintf('Optimal value of Deviation after FM+MC: %.1f\n',evaluation_opt);
+  end
+elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'MC')
+  N_estrazioni=SHIMMING_OPT.MC_extraction;
+  Method_Actual='(MC)';
+  Neval_function=0;
+  Neval_function_write=false;
+  start_optimization = tic;
+  fprintf('----OPTIMIZATION with MC----\n');
+  fprintf('N. of parameters: %d\n',nvars_rid);
+  x_input_start = x_input_good_rid;
+
+  for iter=1:4
+    [x_output,evaluation_optMC] = monte_carlo.MC_opt(f,x_input_start,N_estrazioni,Var_input,nvars_rid);
+    if evaluation_optMC < evaluation_opt
+        evaluation_opt = evaluation_optMC;
+        x_input_good_rid=x_output;
+        x_input_start = x_output;
+    end
+    fprintf('Iter No. %d - Deviation value: %.1f\n',iter,evaluation_opt);
+    Var_input=Var_input/2;
+  end
+  computational_time_LA=toc(start_optimization);
+  fprintf('Computational time: %.1f\n',computational_time_LA);
+  fprintf('Optimal value of Deviation after MC: %.1f\n',evaluation_opt);
 end
+
 %=======================================================================
-computational_time=computational_timeGA+computational_timePS+computational_timeFM;
+computational_time=computational_time_GA+computational_time_LA;
 fprintf('Total computational time: %.1f\n',computational_time);
 %
-fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
-if SHIMMING_OPT.GA
+if strcmpi(SHIMMING_OPT.Global_Algorithm,'GA')
   fprintf('--------------------------------------------------------\n');
   fprintf('Genetic Algorithm\n');
   fprintf('Exit flag: %d\n',exitflagGA);
-  fprintf('Number of generations: %d\n', OutputGA.generations);
-  fprintf('Computational time: %.1f\n',computational_timeGA);
-  fprintf('Optimal value of Deviation after GA (ppm): %.1f\n',evaluation_optGA);
+  fprintf('Optimal value of Deviation after GA: %.2f\n',evaluation_optGA);
+  fprintf('--------------------------------------------------------\n');
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'PS')
+  fprintf('--------------------------------------------------------\n');
+  fprintf('ParticleSwarm Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagSW);
+  fprintf('Optimal value of Deviation after SW: %.2f\n',evaluation_optSW);
+  fprintf('--------------------------------------------------------\n');
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'SA')
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Simulated Annealing Algorithm\n');
+  fprintf('Exit flag: %d\n',exitflagSA);
+  fprintf('Optimal value of Deviation after SA: %.2f\n',evaluation_optSA);
+  fprintf('--------------------------------------------------------\n');
+elseif strcmpi(SHIMMING_OPT.Global_Algorithm,'WO')
+  fprintf('--------------------------------------------------------\n');
+  fprintf('Whale Optimization Algorithm\n');
+  fprintf('Optimal value of Deviation after SA: %.2f\n',evaluation_optWO);
   fprintf('--------------------------------------------------------\n');
 end
-if SHIMMING_OPT.Patternsearch
-  fprintf('--------------------------------------------------------\n');
-  fprintf('Patternsearch Algorithm\n');
-  fprintf('Exit flag: %d\n',exitflagPS);
-  fprintf('Computational time: %.1f\n',computational_timePS);
-  fprintf('Optimal value of Deviation after Patternsearch (ppm): %.1f\n',evaluation_optPS);
-  fprintf('--------------------------------------------------------\n');
-end
-if SHIMMING_OPT.Fmincon
-  fprintf('--------------------------------------------------------\n');
-  fprintf('Fmincon Algorithm\n');
-  fprintf('Exit flag: %d\n',exitflagFM);
-  fprintf('Computational time: %.1f\n',computational_timeFM);
-  fprintf('Optimal value of Deviation after Fmincon (ppm): %.1f\n',evaluation_optFM);
-  fprintf('--------------------------------------------------------\n');
-end
-%=======================================================================
 
-[dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input_good);
+%=======================================================================
+if PM_position
+  [dir_mag_shim,PM_presence] = from_input_to_PM(x_input_good_rid);
+else
+  [dir_mag_shim,PM_presence] = from_input_to_PM2(x_input_good_rid,SHIMMING_OPT,PM_presence_save);
+end
 
 % Reconstruct position of PM added in shimming and adjust final field in DSV
-configuration_at_end(pos_in_sector,dir_mag_shim);
-[Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
-fprintf('Ending situation - \n');
-fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
-fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
-fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
+[SHIMMING_OPT,MAGNETI_GEO,SHIMMING_GEO] = configuration_at_end(PM_presence,dir_mag_shim,...
+                                          MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,...
+                                          MATERIALI,SIMUL_DATA,SHIMMING_OPT,SHIMMING_GEO,POINTS);
+
+fprintf('#######################################################\n');
+fprintf('SUMMARY\n');
+
+if MAGNETI_GEO.Ndipoli_tot == 0
+  fprintf('NO MAGNETS ADDED AT THIS RUN\n');
+  fprintf('Original value deviation is kept\n');
+  return
+end
+
+if strcmpi(SHIMMING_OPT.DevOpt,'DEV1')
+  fprintf('Original value of DEV1 before shimming (ppm): %.2f\n',SHIMMING_OPT.original_deviation);
+  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+  fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+  fprintf('dB [uT]: %.3f\n',(Bmax-Bmin)*1e6);
+  fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
+  fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
+  fprintf('Original value of DEV2 before shimming (ppm): %.2f\n',SHIMMING_OPT.original_deviation);
+  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+  fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+  fprintf('dB [uT]: %.3f\n',(Bmax-Bmin)*1e6);
+  fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
+  fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV3')
+  fprintf('Original value of DEV3 before shimming (ppm): %.2f\n',SHIMMING_OPT.original_deviation);
+  [Bmin,Bmax,B0,DEV3_ppm] = util.variability3(SHIMMING_OPT.B5);
+  fprintf('Bmin,Bmax,B0 [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,B0*1000);
+  fprintf('dB [uT]: %.3f\n',(Bmax-Bmin)*1e6);
+  fprintf('DEV3 [ppm]: %.1f\n',DEV3_ppm);
+elseif strcmpi(SHIMMING_OPT.DevOpt,'dB')
+  fprintf('Original value of dB before shimming (uT): %.2f\n',SHIMMING_OPT.original_deviation);
+  if strcmpi(typemis,'V')   %Volume data in DSV
+    [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(SHIMMING_OPT.B5);
+    fprintf('Bmin,Bmax,Bmean [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+    fprintf('dB [uT]: %.3f\n',(Bmax-Bmin)*1e6);
+    fprintf('DEV1 [ppm]: %.1f\n',DEV1_ppm);
+    fprintf('DEV2 [ppm]: %.1f\n',DEV2_ppm);
+  elseif strcmpi(typemis,'S')   %Surface data in DSV
+    [Bmin,Bmax,B0,DEV3_ppm] = util.variability3(SHIMMING_OPT.B5);
+    fprintf('Bmin,Bmax,B0 [mT]: %.2f %.2f %.2f\n',Bmin*1000,Bmax*1000,B0*1000);
+    fprintf('dB [uT]: %.3f\n',(Bmax-Bmin)*1e6);
+    fprintf('DEV3 [ppm]: %.1f\n',DEV3_ppm);
+  end
+end
 
 if SHIMMING_OPT.Run == 1
     mkdir(SHIMMING_OPT.ShimmingDir);
@@ -324,8 +554,6 @@ if MAGNETI_GEO_PREVIOUS.exist
 else
    Delta_magnets=MAGNETI_GEO.Ndipoli_tot;
 end
-fprintf('#######################################################\n');
-fprintf('SUMMARY\n');
 fprintf('Added magnets: %d\n',Delta_magnets);
 MatrixShimming=SHIMMING_GEO.MatrixShimming;
 FieldValues=SHIMMING_OPT.B5;
@@ -335,14 +563,24 @@ save(filemat,'MAGNETI_GEO','MatrixShimming','FieldValues','Run','Delta_magnets',
 save(filemat,'Code_Version','input_file_description','input_file_version','-append');
 save(filemat,'computational_time','-append');
 if SHIMMING_OPT.GA
-  save(filemat,'OutputGA','-append');
+  save(filemat,'OutputGA','evaluation_optGA','-append');
 end
-if SHIMMING_OPT.Fmincon
+if SHIMMING_OPT.SW
+  save(filemat,'OutputSW','evaluation_optSW','-append');
+end
+if SHIMMING_OPT.SA
+  save(filemat,'OutputSA','evaluation_optSA','-append');
+end
+if SHIMMING_OPT.FM
   save(filemat,'OutputFM','-append');
 end
-if SHIMMING_OPT.Patternsearch
+if SHIMMING_OPT.PS
   save(filemat,'OutputPS','-append');
 end
+if SHIMMING_OPT.WO
+  save(filemat,'WOA_cg_curve','evaluation_optWO','-append');
+end
+
 
 % Extract general info for optimization to be saved
 if SHIMMING_GEO.sector_type == 1
@@ -355,77 +593,50 @@ INFO_SHIM_OPT = rmfield (SHIMMING_OPT,{'B5'});
 save(filemat,'INFO_SHIM_GEO','INFO_SHIM_OPT','-append');
 save(filemat,'SIMUL_DATA','TEMPERATURE','-append');
 %
-Angle_min=min(x_input_good(1,ini(1):fin(1)));
-Angle_max=max(x_input_good(1,ini(1):fin(1)));
-fprintf('Min and Max rotational angle (degree): %.1f %.1f\n',Angle_min,Angle_max);
-Bmean_mT=Bmean*1000;
-save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
-
+if strcmpi(SHIMMING_OPT.DevOpt,'DEV1') || strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
+  Bmean_mT=Bmean*1000;
+  save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV3')
+  B0_mT=B0*1000;
+  save(filemat,'DEV3_ppm','B0_mT','-append');
+elseif strcmpi(SHIMMING_OPT.DevOpt,'dB')
+  if strcmpi(typemis,'V')
+    Bmean_mT=Bmean*1000;
+    save(filemat,'DEV1_ppm','DEV2_ppm','Bmean_mT','-append');
+  elseif strcmpi(typemis,'S')
+    B0_mT=B0*1000;
+    save(filemat,'DEV3_ppm','B0_mT','-append');
+  end
+end
 save(filemat,'MATERIALI','POINTS','-append');   %Servono per poter usare il programma Check_Shim_configuration
 
 fprintf('Results of shimming saved in file: %s\n',filemat);
 fprintf('#######################################################\n');
 
-if evaluation_opt > SHIMMING_OPT.original_deviation_ppm
+if evaluation_opt > SHIMMING_OPT.original_deviation
   fprintf('WARNING: the starting value of Deviation before this optimization step was better\n');
   fprintf('DELETE this run\n');
-  fprintf('Original value of Deviation before shimming (ppm): %.1f\n',SHIMMING_OPT.original_deviation_ppm);
-  fprintf('Deviation after this step (ppm): %.1f\n',evaluation_opt);
+  fprintf('Original value of Deviation before shimming: %.2f\n',SHIMMING_OPT.original_deviation);
+  fprintf('Deviation after this step: %.1f\n',evaluation_opt);
 end
 
 end
 
 
-function [ini,fin] = ini_fin_blocchi(nvar_block)
-    ini(1)=1;
-    fin(1)=nvar_block(1);
-    ini(2)=fin(1)+1;
-    fin(2)=fin(1)+nvar_block(2);
+function [dir_mag_shim,PM_presence] = from_input_to_PM(x_input)
+PM_presence=ones(length(x_input),1);
+PM_presence(x_input>360)=0;
+dir_mag_shim=transpose(x_input);
 return
 end
 
-
-function [dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input)
-global SHIMMING_OPT
-
-[ini,fin] = ini_fin_blocchi(SHIMMING_OPT.nvar_block);
-
-clear x_input2
-if SHIMMING_OPT.PM_NumAngle == 0
-  x_input2=x_input(1,ini(1):fin(1));
-else
-  x_input2=x_input(1,ini(1):fin(1))*360/SHIMMING_OPT.PM_NumAngle;
-end
-
-if SHIMMING_OPT.PM_angle_equal_Z
-  Nrused=length(SHIMMING_OPT.ring_to_be_used);
-  for Nr=1:Nrused
-    dir_mag_shim(ini(1)+fin(1)*(Nr-1):fin(1)+fin(1)*(Nr-1),1)=transpose(x_input2(1,ini(1):fin(1)));
-  end
-else
-  dir_mag_shim=transpose(x_input2(1,ini(1):fin(1)));
-end
-if SHIMMING_OPT.PM_fixed
-% Posizione PM fissata
-  pos_in_sector=zeros(SHIMMING_OPT.nvar_block(2),1);
-  Nring_used=length(SHIMMING_OPT.ring_to_be_used);   %Number of used rings in this opt run
-  ii=0;
-  for Nu=1:Nring_used
-    for Ns=1:SHIMMING_OPT.Nsector_Shim
-        iss=0;
-      for Nm=1:SHIMMING_OPT.PM_add_per_sector
-        ii=ii+1;
-        iss=iss+1;
-        pos_in_sector(ii,1)=int32(SHIMMING_OPT.PM_fixed_pos(iss));
-      end
-    end
-  end
-else
-% Posizione PM definita da ottimizzatore
-  pos_in_sector=int32(round(transpose(x_input(1,ini(2):fin(2)))));
-end
+function [dir_mag_shim,PM_presence] = from_input_to_PM2(x_input_rid,SHIMMING_OPT,PM_presence_save)
+PM_presence=PM_presence_save;
+dir_mag_shim=zeros(SHIMMING_OPT.Ndipoli_tot_shim_max,1);
+dir_mag_shim(PM_presence>0)=x_input_rid;
 return
 end
+
 
 function MAGNETI_GEO = assemblea_magneti(MAGNETI_GEO_PREVIOUS,MAGNETI_GEO)
 nold = MAGNETI_GEO_PREVIOUS.Ndipoli_tot;
@@ -446,16 +657,13 @@ return
 end
 
 
-function configuration_at_end(pos_in_sector,dir_mag_shim)
-global MAGNETI_GEO
-global SHIMMING_OPT
-global MAGNETI_STATO
-global MATERIALI
-global TEMPERATURE
-global SIMUL_DATA
-global POINTS
-
-build_dipole_shim_end(pos_in_sector,dir_mag_shim);
+function [SHIMMING_OPT,MAGNETI_GEO,SHIMMING_GEO] = configuration_at_end(PM_presence,dir_mag_shim,...
+                                                   MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,...
+                                                   MATERIALI,SIMUL_DATA,SHIMMING_OPT,SHIMMING_GEO,POINTS)
+[MAGNETI_GEO,SHIMMING_GEO] = build_dipole_shim_end(PM_presence,dir_mag_shim,MAGNETI_GEO,SHIMMING_OPT,SHIMMING_GEO);
+if MAGNETI_GEO.Ndipoli_tot == 0
+  return
+end
 %
 MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
 for n=1:MATERIALI.Nlist
@@ -479,7 +687,7 @@ return
 end
 
 
-function [ierr,POINTS] = input_DSVMeas(toml_data,POINTS)
+function [ierr,POINTS,typemis] = input_DSVMeas(toml_data,POINTS)
 ierr=0;
 if ~isfield(toml_data.shimming,'measurement')
     fprintf('Field [shimming.pm.measurement] not present\n');
@@ -496,6 +704,12 @@ if ~isfield(toml_data.shimming.measurement,'component')
     ierr=1;
     return
 end
+if ~isfield(toml_data.shimming.measurement,'typemis')
+    fprintf('Field [shimming.pm.measurement.typemis] not present\n');
+    ierr=1;
+    return
+end
+typemis=toml_data.shimming.measurement.typemis;
 nomemis=toml_data.shimming.measurement.filemis;
 aus=load(nomemis);
 POINTS.Npoint=size(aus.acqPos,1);
@@ -522,8 +736,8 @@ if ~isfield(toml_data.shimming,'opt_rules')
     ierr=1;
     return
 end
-if ~isfield(toml_data.shimming.opt_rules,'PM_NumAngle')
-    fprintf('Field [shimming.opt_rules.PM_NumAngle] not present\n');
+if ~isfield(toml_data.shimming.opt_rules,'PM_AngleVar')
+    fprintf('Field [shimming.opt_rules.PM_AngleVar] not present\n');
     ierr=1;
     return
 end
@@ -537,16 +751,19 @@ if ~isfield(toml_data.shimming.opt_rules,'PM_material')
     ierr=1;
     return
 end
-if ~isfield(toml_data.shimming.opt_rules,'Zaxis_symmetry')
-    fprintf('Field [shimming.opt_rules.Zaxis_symmetry] not present\n');
+
+if isfield(toml_data.shimming.opt_rules,'ring_to_be_used')
+  SHIMMING_OPT.ring_to_be_used=toml_data.shimming.opt_rules.ring_to_be_used;
+  aa=SHIMMING_OPT.ring_to_be_used > SHIMMING_GEO.Nring_tot;
+  if any(aa)
+    fprintf('Error in data of Field [shimming.opt_rules.ring_to_be_used]\n');
     ierr=1;
     return
+  end
+else
+  SHIMMING_OPT.ring_to_be_used=1:1:SHIMMING_GEO.Nring_tot;
 end
-if ~isfield(toml_data.shimming.opt_rules,'ring_to_be_used')
-    fprintf('Field [shimming.opt_rules.ring_to_be_used] not present\n');
-    ierr=1;
-    return
-end
+SHIMMING_OPT.Nring_used=length(SHIMMING_OPT.ring_to_be_used);
 
 if isfield(toml_data.shimming.opt_rules,'sector_to_be_used')
   SHIMMING_OPT.sector_to_be_used=toml_data.shimming.opt_rules.sector_to_be_used;
@@ -559,80 +776,34 @@ if isfield(toml_data.shimming.opt_rules,'sector_to_be_used')
 else
   SHIMMING_OPT.sector_to_be_used=1:1:SHIMMING_GEO.Nsector_available;
 end
-SHIMMING_OPT.Nsector_Shim=length(SHIMMING_OPT.sector_to_be_used);
+SHIMMING_OPT.Nsector_used=length(SHIMMING_OPT.sector_to_be_used);
 
-SHIMMING_OPT.PM_fixed=false;
-SHIMMING_OPT.PM_fixed_pos=0;
-if isfield(toml_data.shimming.opt_rules,'PM_fixed_pos')
-  SHIMMING_OPT.PM_fixed_pos=toml_data.shimming.opt_rules.PM_fixed_pos;
-  SHIMMING_OPT.PM_add_per_sector=length(SHIMMING_OPT.PM_fixed_pos);
-  if length(SHIMMING_OPT.PM_fixed_pos) == 1
-    if SHIMMING_OPT.PM_fixed_pos > 0
-      SHIMMING_OPT.PM_fixed=true;
-    end
-  else
-    SHIMMING_OPT.PM_fixed=true;
-  end
-end
-if ~SHIMMING_OPT.PM_fixed
-  if ~isfield(toml_data.shimming.opt_rules,'PM_add_per_sector')
-    fprintf('Field [shimming.opt_rules.PM_add_per_sector] not present\n');
+if isfield(toml_data.shimming.opt_rules,'slot_to_be_used')
+  SHIMMING_OPT.slot_to_be_used=toml_data.shimming.opt_rules.slot_to_be_used;
+  aa=SHIMMING_OPT.slot_to_be_used > SHIMMING_GEO.Nslot_per_sector;
+  if any(aa)
+    fprintf('Error in data of Field [shimming.opt_rules.Nslot_per_sector]\n');
     ierr=1;
     return
   end
-  SHIMMING_OPT.PM_add_per_sector=toml_data.shimming.opt_rules.PM_add_per_sector;
+else
+  SHIMMING_OPT.slot_to_be_used=1:1:SHIMMING_GEO.Nslot_per_sector;
 end
+SHIMMING_OPT.Nslot_used=length(SHIMMING_OPT.slot_to_be_used);
 
-SHIMMING_OPT.PM_angle_equal_Z = false;
-if isfield(toml_data.shimming.opt_rules,'PM_angle_equal_Z')
-  SHIMMING_OPT.PM_angle_equal_Z=toml_data.shimming.opt_rules.PM_angle_equal_Z;
-end
 
-SHIMMING_OPT.PM_NumAngle=toml_data.shimming.opt_rules.PM_NumAngle;
-
-if SHIMMING_OPT.PM_NumAngle == 0
-% angle continuous variable
-  if ~isfield(toml_data.shimming.opt_rules,'PM_angleMax')
-      fprintf('Field [shimming.opt_rules.PM_angleMax] not present\n');
-      ierr=1;
-      return
-  end
-  SHIMMING_OPT.Variazione_angolo_PM_shim=toml_data.shimming.opt_rules.PM_angleMax;
-end
-
-% Flag che definisce posizione iniziale magneti:
-% (0=angolo 0 deg, 1=angolo dato da posizione, 2=Halbach rule)
-SHIMMING_OPT.PM_angle_initial = 0;
-if isfield(toml_data.shimming.opt_rules,'PM_angle_initial')
-  SHIMMING_OPT.PM_angle_initial=toml_data.shimming.opt_rules.PM_angle_initial;
-end
+SHIMMING_OPT.PM_AngleVar=toml_data.shimming.opt_rules.PM_AngleVar;
 
 SHIMMING_OPT.cubo_dimU2_shim_ref=toml_data.shimming.opt_rules.PM_size(1)*scale;
 SHIMMING_OPT.cubo_dimV2_shim_ref=toml_data.shimming.opt_rules.PM_size(2)*scale;
 SHIMMING_OPT.cubo_dimW2_shim_ref=toml_data.shimming.opt_rules.PM_size(3)*scale;
 SHIMMING_OPT.PM_material=toml_data.shimming.opt_rules.PM_material;
-SHIMMING_OPT.Zaxis_symmetry=toml_data.shimming.opt_rules.Zaxis_symmetry;
 
-SHIMMING_OPT.ring_to_be_used=toml_data.shimming.opt_rules.ring_to_be_used;
-% Verify consistency with used rings
-if ~all(SHIMMING_GEO.ring_available(SHIMMING_OPT.ring_to_be_used))
-    ierr=1;
-    return
-end
-if SHIMMING_OPT.Zaxis_symmetry
-    aaa=SHIMMING_OPT.ring_to_be_used+SHIMMING_GEO.Nring_tot/2;
-    if ~all(SHIMMING_GEO.ring_available(aaa))
-        ierr=1;
-        return
-    end
-end
-Nrused=length(SHIMMING_OPT.ring_to_be_used);
-SHIMMING_OPT.Ndipoli_tot_shim_max=SHIMMING_OPT.PM_add_per_sector*SHIMMING_OPT.Nsector_Shim*Nrused;
 
 if isfield(toml_data.shimming.opt_rules,'dev_to_be_optimized')
   SHIMMING_OPT.DevOpt=toml_data.shimming.opt_rules.dev_to_be_optimized;
 else
-  SHIMMING_OPT.DevOpt='DEV1';
+  SHIMMING_OPT.DevOpt='dB';
 end
 
 if isfield(toml_data.shimming.opt_rules,'shimming_Dir')
@@ -701,24 +872,31 @@ else
   SHIMMING_OPT.Tolerance=1e-4;
 end
 
-if isfield(toml_data.shimming.opt_rules,'GA')
-  SHIMMING_OPT.GA=toml_data.shimming.opt_rules.GA;
+% Select among the available Global Algorithms: GA, SW, SA
+if isfield(toml_data.shimming.opt_rules,'Global_Algorithm')
+  SHIMMING_OPT.Global_Algorithm=toml_data.shimming.opt_rules.Global_Algorithm;
 else
-  SHIMMING_OPT.GA=true;
+  SHIMMING_OPT.Global_Algorithm='SW';   %Default: SW
 end
 
-if isfield(toml_data.shimming.opt_rules,'Patternsearch')
-  SHIMMING_OPT.Patternsearch=toml_data.shimming.opt_rules.Patternsearch;
+% Select among the available Local Algorithms: Patternsearch,Fmincon,LSQ+MC 
+if isfield(toml_data.shimming.opt_rules,'Local_Algorithm')
+  SHIMMING_OPT.Local_Algorithm=toml_data.shimming.opt_rules.Local_Algorithm;
 else
-  SHIMMING_OPT.Patternsearch=false;
+  SHIMMING_OPT.Local_Algorithm='LSQ+MC';  %Default: LSQ+MC
 end
 
-if isfield(toml_data.shimming.opt_rules,'Fmincon')
-  SHIMMING_OPT.Fmincon=toml_data.shimming.opt_rules.Fmincon;
+if isfield(toml_data.shimming.opt_rules,'Local_Var_input')
+  SHIMMING_OPT.Local_Var_input=toml_data.shimming.opt_rules.Local_Var_input;
 else
-  SHIMMING_OPT.Fmincon=false;
+  SHIMMING_OPT.Local_Var_input=1;  %Default: 1 deg
 end
 
+if isfield(toml_data.shimming.opt_rules,'MC_extraction')
+  SHIMMING_OPT.MC_extraction=toml_data.shimming.opt_rules.MC_extraction;
+else
+  SHIMMING_OPT.MC_extraction=5000;  %Default: 5000
+end
 
 return
 end
@@ -754,17 +932,12 @@ if ~isfield(toml_data.shimming.pm,'sector_type')
     return
 end
 
-if ~isfield(toml_data.shimming.pm,'max_PM_per_sector')
-    fprintf('Field [shimming.pm.max_PM_per_sector] not present\n');
+if ~isfield(toml_data.shimming.pm,'Nslot_per_sector')
+    fprintf('Field [shimming.pm.Nslot_per_sector] not present\n');
     ierr=1;
     return
 end
 
-if ~isfield(toml_data.shimming.pm,'ring_available')
-    fprintf('Field [shimming.pm.ring_available] not present\n');
-    ierr=1;
-    return
-end
 if ~isfield(toml_data.shimming.pm,'ring_Zposition')
     fprintf('Field [shimming.pm.ring_Zposition] not present\n');
     ierr=1;
@@ -772,7 +945,7 @@ if ~isfield(toml_data.shimming.pm,'ring_Zposition')
 end
 SHIMMING_GEO.Raggio_shim=toml_data.shimming.pm.radius*scale;
 SHIMMING_GEO.Nsector_available=toml_data.shimming.pm.Nsector_available;
-SHIMMING_GEO.Max_PM_per_settore=toml_data.shimming.pm.max_PM_per_sector;
+SHIMMING_GEO.Nslot_per_sector=toml_data.shimming.pm.Nslot_per_sector;
 SHIMMING_GEO.sector_type=toml_data.shimming.pm.sector_type;
 
 if SHIMMING_GEO.sector_type == 1
@@ -793,7 +966,6 @@ elseif SHIMMING_GEO.sector_type == 2
   SHIMMING_GEO.Ampiezza_angolare_settore=toml_data.shimming.pm.sector_angular_width;
 end
 
-SHIMMING_GEO.ring_available=cell2mat(toml_data.shimming.pm.ring_available);
 SHIMMING_GEO.ring_Zposition=toml_data.shimming.pm.ring_Zposition*scale;
 SHIMMING_GEO.Nring_tot=length(SHIMMING_GEO.ring_Zposition);
 
@@ -801,12 +973,12 @@ Dang_shim=360./SHIMMING_GEO.Nsector_available;
 aus=0:1:SHIMMING_GEO.Nsector_available-1;
 Pos_Angular_shim=Dang_shim*aus;
 % Structure which keep trace of position filled with magnets (the value corresponds to the Run number)
-SHIMMING_GEO.MatrixShimming=zeros(SHIMMING_GEO.Nring_tot,SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Max_PM_per_settore);  %Matrice che conterrà posizioni occupate
+SHIMMING_GEO.MatrixShimming=zeros(SHIMMING_GEO.Nring_tot,SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Nslot_per_sector);  %Matrice che conterrà posizioni occupate
 %
 if SHIMMING_GEO.sector_type == 1
-  DV_shim=SHIMMING_GEO.Ampiezza_settore/SHIMMING_GEO.Max_PM_per_settore;   %Distanza di separazione tra magneti del settore (v locale)
-  SHIMMING_GEO.Xslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Max_PM_per_settore);  %position X of each slot of the sectors
-  SHIMMING_GEO.Yslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Max_PM_per_settore);  %position Y of each slot of the sectors
+  DV_shim=SHIMMING_GEO.Ampiezza_settore/SHIMMING_GEO.Nslot_per_sector;   %Distanza di separazione tra magneti del settore (v locale)
+  SHIMMING_GEO.Xslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Nslot_per_sector);  %position X of each slot of the sectors
+  SHIMMING_GEO.Yslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Nslot_per_sector);  %position Y of each slot of the sectors
   for Ns=1:SHIMMING_GEO.Nsector_available
     ang=Pos_Angular_shim(Ns)/180*pi;
     xb_sector=SHIMMING_GEO.Raggio_shim*cos(ang);
@@ -823,14 +995,14 @@ if SHIMMING_GEO.sector_type == 1
     drif(3,2)=y2_sector;
     drif(3,3)=0.0;
 %
-    for Nm=1:SHIMMING_GEO.Max_PM_per_settore
-      mm=mod(SHIMMING_GEO.Max_PM_per_settore,2);
+    for Nm=1:SHIMMING_GEO.Nslot_per_sector
+      mm=mod(SHIMMING_GEO.Nslot_per_sector,2);
       if mm==0
 % pari
-        Nsub=SHIMMING_GEO.Max_PM_per_settore/2+0.5;
+        Nsub=SHIMMING_GEO.Nslot_per_sector/2+0.5;
       else
 % dispari
-        Nsub=fix(SHIMMING_GEO.Max_PM_per_settore/2)+1;
+        Nsub=fix(SHIMMING_GEO.Nslot_per_sector/2)+1;
       end
       uloc=0.0;
       vloc=(Nm-Nsub)*DV_shim;
@@ -841,16 +1013,16 @@ if SHIMMING_GEO.sector_type == 1
     end
   end
 elseif SHIMMING_GEO.sector_type == 2
-  Dalfa_shim=SHIMMING_GEO.Ampiezza_angolare_settore/SHIMMING_GEO.Max_PM_per_settore;   %Angolo in gradi di separazione tra magneti del settore
-  SHIMMING_GEO.angoloslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Max_PM_per_settore);  %Angular position of each slot of the sectors
+  Dalfa_shim=SHIMMING_GEO.Ampiezza_angolare_settore/SHIMMING_GEO.Nslot_per_sector;   %Angolo in gradi di separazione tra magneti del settore
+  SHIMMING_GEO.angoloslot=zeros(SHIMMING_GEO.Nsector_available,SHIMMING_GEO.Nslot_per_sector);  %Angular position of each slot of the sectors
   for Ns=1:SHIMMING_GEO.Nsector_available
-    for Nm=1:SHIMMING_GEO.Max_PM_per_settore
-      mm=mod(SHIMMING_GEO.Max_PM_per_settore,2);
+    for Nm=1:SHIMMING_GEO.Nslot_per_sector
+      mm=mod(SHIMMING_GEO.Nslot_per_sector,2);
       if mm==0
-        Nsub=SHIMMING_GEO.Max_PM_per_settore/2+0.5;
+        Nsub=SHIMMING_GEO.Nslot_per_sector/2+0.5;
         SHIMMING_GEO.angoloslot(Ns,Nm)=Pos_Angular_shim(Ns)+(Nm-Nsub)*Dalfa_shim;
       else
-        Nsub=fix(SHIMMING_GEO.Max_PM_per_settore/2)+1;
+        Nsub=fix(SHIMMING_GEO.Nslot_per_sector/2)+1;
         SHIMMING_GEO.angoloslot(Ns,Nm)=Pos_Angular_shim(Ns)+(Nm-Nsub)*Dalfa_shim;
       end
     end
@@ -860,19 +1032,54 @@ return
 end
 
 
-function build_dipole_shim(pos_in_sector,dir_mag_shim)
 
-global MAGNETI_GEO
-global SHIMMING_OPT
-global SHIMMING_GEO
+function [SHIMMING_OPT] = define_PM_positions(SHIMMING_OPT,SHIMMING_GEO)
+%----------------------------------------------------------------------
+% Define PM positions in the considered optimization run
+%----------------------------------------------------------------------
+ii=0;
+for N1=1:SHIMMING_OPT.Nring_used
+  Nr=SHIMMING_OPT.ring_to_be_used(N1);   %Number of used Ring
+  for N2=1:SHIMMING_OPT.Nsector_used
+    Ns=SHIMMING_OPT.sector_to_be_used(N2);
+    for N3=1:SHIMMING_OPT.Nslot_used
+      Nm=SHIMMING_OPT.slot_to_be_used(N3);
+      if SHIMMING_GEO.MatrixShimming(Nr,Ns,Nm) == 0
+        ii=ii+1;
+        if SHIMMING_GEO.sector_type == 1
+% Settori rettangolari
+          SHIMMING_OPT.PM_posX(ii,1)=SHIMMING_GEO.Xslot(Ns,Nm);
+          SHIMMING_OPT.PM_posY(ii,1)=SHIMMING_GEO.Yslot(Ns,Nm);
+          SHIMMING_OPT.PM_posZ(ii,1)=SHIMMING_GEO.ring_Zposition(Nr);
+          SHIMMING_OPT.RingIndex(ii,1)=Nr;
+          SHIMMING_OPT.SectorIndex(ii,1)=Ns;
+          SHIMMING_OPT.PositionIndex(ii,1)=Nm;
+        elseif SHIMMING_GEO.sector_type == 2
+% Settori ad arco
+          angolo=SHIMMING_GEO.angoloslot(Ns,Nm);
+          SHIMMING_OPT.PM_posX(ii,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
+          SHIMMING_OPT.PM_posY(ii,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
+          SHIMMING_OPT.PM_posZ(ii,1)=SHIMMING_GEO.ring_Zposition(Nr);
+          SHIMMING_OPT.RingIndex(ii,1)=Nr;
+          SHIMMING_OPT.SectorIndex(ii,1)=Ns;
+          SHIMMING_OPT.PositionIndex(ii,1)=Nm;
+        end
+      end
+    end
+  end
+end
+SHIMMING_OPT.Ndipoli_tot_shim_max=ii;   %Numero massimo di PM che possono essere aggiunti con questo Run di ottimizzazione
+return
+end
+
+
+
+
+function [MAGNETI_GEO] = build_dipole_shim(PM_presence,dir_mag_shim,MAGNETI_GEO,SHIMMING_OPT,SHIMMING_GEO)
 %----------------------------------------------------------------------
 % Input dati magneti shimming
 %----------------------------------------------------------------------
-Nring_used=length(SHIMMING_OPT.ring_to_be_used);   %Number of used rings in this opt run
 Nmax=SHIMMING_OPT.Ndipoli_tot_shim_max;
-if SHIMMING_OPT.Zaxis_symmetry
-  Nmax=Nmax*2;
-end
 MAGNETI_GEO.xdip=zeros(Nmax,1);
 MAGNETI_GEO.ydip=zeros(Nmax,1);
 MAGNETI_GEO.zdip=zeros(Nmax,1);
@@ -883,213 +1090,41 @@ MAGNETI_GEO.cubo_dimW2=zeros(Nmax,1);
 MAGNETI_GEO.mat_number=zeros(Nmax,1);
 MAGNETI_GEO.Ndipoli_tot=0;
 %
-if SHIMMING_GEO.sector_type == 1
-% Settori rettangolari
-  ii=0;
-  for Nu=1:Nring_used
-    Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nus=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nus);
-      for Nm=1:SHIMMING_OPT.PM_add_per_sector
-        ii=ii+1;
-        if ii > Nmax
-            fprintf('ERRORE: conteggio ii\n')
-            return
-        end
-        ipos=pos_in_sector(ii,1);
-        if ipos > 0
-          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-          if aa<0
-            aa=aa+2*pi;
-          end
-          angolo_OR=SHIMMING_OPT.PM_angle_initial*aa/pi*180;
- 
-          if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
-            MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-            MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
-            MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
-            MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-            MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-            MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-            MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-            MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-          end
-          if SHIMMING_OPT.Zaxis_symmetry
-            Nr2=Nr+SHIMMING_GEO.Nring_tot/2;
-            if SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos) == 0
-              MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-              MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
-              MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
-              MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-              MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-              MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-              MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-              MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-            end
-          end
-        end
-      end
-    end
-  end
-elseif SHIMMING_GEO.sector_type == 2
-% Settori ad arco
-  ii=0;
-  for Nu=1:Nring_used
-    Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nus=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nus);
-      for Nm=1:SHIMMING_OPT.PM_add_per_sector
-        ii=ii+1;
-        if ii > Nmax
-            fprintf('ERRORE: conteggio ii\n')
-            return
-        end
-        ipos=pos_in_sector(ii,1);
-        if ipos > 0
-          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
-          angolo_OR=SHIMMING_OPT.PM_angle_initial*angolo;
-          if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
-            MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-            MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
-            MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
-            MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-            MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-            MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-            MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-            MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-          end
-          if SHIMMING_OPT.Zaxis_symmetry
-            Nr2=Nr+SHIMMING_GEO.Nring_tot/2;
-            if SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos) == 0
-              MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-              MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
-              MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
-              MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-              MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-              MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-              MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-              MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-            end
-          end
-        end
-      end
-    end
+for ii=1:Nmax
+  if PM_presence(ii) > 0
+    MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
+    MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posX(ii,1);
+    MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posY(ii,1);
+    MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posZ(ii,1);
+    MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=dir_mag_shim(ii,1);
+    MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
+    MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
+    MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
+    MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
   end
 end
 return
 end
 
 
-function build_dipole_shim_end(pos_in_sector,dir_mag_shim)
-
-global MAGNETI_GEO
-global SHIMMING_OPT
-global SHIMMING_GEO
-
+function [MAGNETI_GEO,SHIMMING_GEO] = build_dipole_shim_end(PM_presence,dir_mag_shim,MAGNETI_GEO,SHIMMING_OPT,SHIMMING_GEO)
 MAGNETI_GEO.Ndipoli_tot=0;
-MAGNETI_GEO.xdip(1:end)=[];
-MAGNETI_GEO.ydip(1:end)=[];
-MAGNETI_GEO.zdip(1:end)=[];
-MAGNETI_GEO.angle(1:end)=[];
-MAGNETI_GEO.cubo_dimU2(1:end)=[];
-MAGNETI_GEO.cubo_dimV2(1:end)=[];
-MAGNETI_GEO.cubo_dimW2(1:end)=[];
-MAGNETI_GEO.mat_number(1:end)=[];
-Nring_used=length(SHIMMING_OPT.ring_to_be_used);   %Number of used rings in this opt run
-%
-if SHIMMING_GEO.sector_type == 1
-% Settori rettangolari
-  ii=0;
-  for Nu=1:Nring_used
-    Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nus=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nus);
-      for Nm=1:SHIMMING_OPT.PM_add_per_sector
-        ii=ii+1;
-        ipos=pos_in_sector(ii,1);
-        if ipos > 0
-          aa=atan2(SHIMMING_GEO.Yslot(Ns,ipos),SHIMMING_GEO.Xslot(Ns,ipos));
-          if aa<0
-            aa=aa+2*pi;
-          end
-          angolo_OR=SHIMMING_OPT.PM_angle_initial*aa/pi*180;
-          if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
-            MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-            MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
-            MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
-            MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-            MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-            MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-            MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-            MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-            SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos)=SHIMMING_OPT.Run;
-          end
-          if SHIMMING_OPT.Zaxis_symmetry
-            Nr2=Nr+SHIMMING_GEO.Nring_tot/2;
-            if SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos) == 0
-              MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-              MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Xslot(Ns,ipos);
-              MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Yslot(Ns,ipos);
-              MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-              MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-              MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-              MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-              MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-              SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos)=SHIMMING_OPT.Run;
-            end
-          end
-        end
-      end
-    end
-  end
-elseif SHIMMING_GEO.sector_type == 2
-% Settori ad arco
-  ii=0;
-  for Nu=1:Nring_used
-    Nr=SHIMMING_OPT.ring_to_be_used(Nu);   %Number of used Ring
-    for nus=1:SHIMMING_OPT.Nsector_Shim
-      Ns=SHIMMING_OPT.sector_to_be_used(nus);
-      for Nm=1:SHIMMING_OPT.PM_add_per_sector
-        ii=ii+1;
-        ipos=pos_in_sector(ii,1);
-        if ipos > 0
-          angolo=SHIMMING_GEO.angoloslot(Ns,ipos);
-          angolo_OR=SHIMMING_OPT.PM_angle_initial*angolo;    %Halbach ideal
-          if SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos) == 0
-            MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-            MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
-            MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
-            MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr);
-            MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-            MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-            MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-            MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-            MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-            SHIMMING_GEO.MatrixShimming(Nr,Ns,ipos)=SHIMMING_OPT.Run;
-          end
-          if SHIMMING_OPT.Zaxis_symmetry
-            Nr2=Nr+SHIMMING_GEO.Nring_tot/2;
-            if SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos) == 0
-              MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
-              MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*cos(angolo/180*pi);
-              MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.Raggio_shim*sin(angolo/180*pi);
-              MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_GEO.ring_Zposition(Nr2);
-              MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=angolo_OR+dir_mag_shim(ii,1);
-              MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
-              MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
-              MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
-              MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
-              SHIMMING_GEO.MatrixShimming(Nr2,Ns,ipos)=SHIMMING_OPT.Run;
-            end
-          end
-        end
-      end
+for ii=1:SHIMMING_OPT.Ndipoli_tot_shim_max
+  if PM_presence(ii) > 0
+    Nr=SHIMMING_OPT.RingIndex(ii,1);
+    Ns=SHIMMING_OPT.SectorIndex(ii,1);
+    Nm=SHIMMING_OPT.PositionIndex(ii,1);
+    if SHIMMING_GEO.MatrixShimming(Nr,Ns,Nm) == 0
+      MAGNETI_GEO.Ndipoli_tot=MAGNETI_GEO.Ndipoli_tot+1;
+      MAGNETI_GEO.xdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posX(ii,1);
+      MAGNETI_GEO.ydip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posY(ii,1);
+      MAGNETI_GEO.zdip(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_posZ(ii,1);
+      MAGNETI_GEO.angle(MAGNETI_GEO.Ndipoli_tot,1)=dir_mag_shim(ii,1);
+      MAGNETI_GEO.cubo_dimU2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimU2_shim_ref;
+      MAGNETI_GEO.cubo_dimV2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimV2_shim_ref;
+      MAGNETI_GEO.cubo_dimW2(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.cubo_dimW2_shim_ref;
+      MAGNETI_GEO.mat_number(MAGNETI_GEO.Ndipoli_tot,1)=SHIMMING_OPT.PM_material;
+      SHIMMING_GEO.MatrixShimming(Nr,Ns,Nm)=SHIMMING_OPT.Run;
     end
   end
 end
@@ -1098,60 +1133,73 @@ end
 
 
 
-function deviation_tot_ppm = deviation_in_sphere3(x_input)
-global MAGNETI_GEO
-global TEMPERATURE
-global MAGNETI_STATO
-global MATERIALI
-global SIMUL_DATA
-global SHIMMING_OPT
-global POINTS
+function deviation = deviation_in_sphere3(x_input,MAGNETI_GEO,TEMPERATURE,MAGNETI_STATO,MATERIALI,SIMUL_DATA,...
+                                                  SHIMMING_OPT,SHIMMING_GEO,POINTS,ideal_dipole,Jresidua_magneti)
+global Neval_function
+global Neval_function_write
+global Method_Actual
+global PM_position
+global PM_presence_save
 
-[dir_mag_shim,pos_in_sector] = from_input_to_PM(x_input);
+if PM_position
+  [dir_mag_shim,PM_presence] = from_input_to_PM(x_input);
+else
+  [dir_mag_shim,PM_presence] = from_input_to_PM2(x_input,SHIMMING_OPT,PM_presence_save);
+end
 
 %------------------------------------------------------
 %  Input geometrico configurazione shimming
 %------------------------------------------------------
-build_dipole_shim(pos_in_sector,dir_mag_shim);
+[MAGNETI_GEO] = build_dipole_shim(PM_presence,dir_mag_shim,MAGNETI_GEO,SHIMMING_OPT,SHIMMING_GEO);
 
 if MAGNETI_GEO.Ndipoli_tot > 0
 %-------------------------------------------------------------------
 %  Assegnazione parametri magnetici per PM di configurazione shimming
 %-------------------------------------------------------------------
-  MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
-
-  for n=1:MATERIALI.Nlist
-    mat_number=MATERIALI.Lista(n,1);
-    Jresidua_relativo(mat_number,1)=1.0;   %For the DET simulations the JH curves are not rescaled
-  end
-  [MAGNETI_STATO] = dipoles_sub.assegna_valori_dipoles(MAGNETI_GEO,MATERIALI,MAGNETI_STATO,Jresidua_relativo);
-  recompute=true;
-  first=true;
+  if ideal_dipole == 1
+    [BFIELD.Bx5,BFIELD.By5,BFIELD.Bz5]=dipoles_sub.ideal_dipole(POINTS,MAGNETI_GEO,Jresidua_magneti);
+%    [BFIELD.Bx5,BFIELD.By5,BFIELD.Bz5] = dipoles_sub.compute_field(POINTS.Npoint,POINTS.xp,POINTS.yp,POINTS.zp,...
+%        MAGNETI_GEO.Ndipoli_tot,MAGNETI_GEO.xdip,MAGNETI_GEO.ydip,MAGNETI_GEO.zdip,MAGNETI_GEO.angle,...
+%        MAGNETI_GEO.cubo_dimU2,MAGNETI_GEO.cubo_dimV2,MAGNETI_GEO.cubo_dimW2,J,SHIMMING_OPT.Mu0);
+    B5 = util.estrai_output(SIMUL_DATA,BFIELD);
+  else    
+    MAGNETI_STATO.Temperature_magneti=ones(MAGNETI_GEO.Ndipoli_tot,1)*TEMPERATURE.Tactual;
+    for n=1:MATERIALI.Nlist
+      mat_number=MATERIALI.Lista(n,1);
+      Jresidua_relativo(mat_number,1)=1.0;   %For the DET simulations the JH curves are not rescaled
+    end
+    [MAGNETI_STATO] = dipoles_sub.assegna_valori_dipoles(MAGNETI_GEO,MATERIALI,MAGNETI_STATO,Jresidua_relativo);
+    recompute=true;
+    first=true;
 % Initialization
-  L=0;
-  U=0;
-  P=0;
-  Tnoto2=0;
-  output_JHmag=true;
-  [~,~,~,~,BFIELD,MAGNETI_STATO] = dipoles_sub.output_dipoles(first,SIMUL_DATA.reaction,SIMUL_DATA.NL,...
-      recompute,MAGNETI_GEO,MAGNETI_STATO,MATERIALI,POINTS,L,U,P,Tnoto2,SHIMMING_OPT.Mu0,output_JHmag);
-  B5 = util.estrai_output(SIMUL_DATA,BFIELD);
+    L=0;
+    U=0;
+    P=0;
+    Tnoto2=0;
+    output_JHmag=true;
+    [~,~,~,~,BFIELD,MAGNETI_STATO] = dipoles_sub.output_dipoles(first,SIMUL_DATA.reaction,SIMUL_DATA.NL,...
+        recompute,MAGNETI_GEO,MAGNETI_STATO,MATERIALI,POINTS,L,U,P,Tnoto2,SHIMMING_OPT.Mu0,output_JHmag);
+    B5 = util.estrai_output(SIMUL_DATA,BFIELD);
+  end
 else
   B5=zeros(length(SHIMMING_OPT.B5),1);
 end    
 B5_tot=SHIMMING_OPT.B5+B5;
-[~,~,~,DEV1_ppm,DEV2_ppm] = util.variability(B5_tot);
 
 if strcmpi(SHIMMING_OPT.DevOpt,'DEV1')
-  deviation_tot_ppm=DEV1_ppm;
+  [~,~,~,deviation,~] = util.variability(B5_tot);
 elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV2')
-  deviation_tot_ppm=DEV2_ppm;
+  [~,~,~,~,deviation] = util.variability(B5_tot);
+elseif strcmpi(SHIMMING_OPT.DevOpt,'DEV3')
+  [~,~,~,deviation] = util.variability3(B5_tot);
+elseif strcmpi(SHIMMING_OPT.DevOpt,'dB')
+  [~,~,deviation] = util.variability_delta(B5_tot);
 end
 
-SHIMMING_OPT.Neval=SHIMMING_OPT.Neval+1;
-if mod(SHIMMING_OPT.Neval,50)==0
-    fprintf('%s Fval: %d Added magnets: %d - deviation_tot_ppm: %.1f\n',SHIMMING_OPT.Method_Actual,...
-    SHIMMING_OPT.Neval,MAGNETI_GEO.Ndipoli_tot,deviation_tot_ppm);
+Neval_function=Neval_function+1;
+if mod(Neval_function,100)==0 && Neval_function_write
+    fprintf('%s Fval: %d Added magnets: %d - Deviation: %.1f\n',Method_Actual,...
+    Neval_function,MAGNETI_GEO.Ndipoli_tot,deviation);
 end
 return
 end

@@ -14,13 +14,7 @@ function Check_Shim_configuration(varargin)
 %
 % Author: O. Bottauscio (first version: 2025)
 %-------------------------------------------------------------------------
-global MAGNETI_GEO
-global SHIMMING_OPT
-global SHIMMING_GEO
 global MAGNETI_STATO
-global MATERIALI
-global TEMPERATURE
-global SIMUL_DATA
 global POINTS
 Code_Version='2.3';
 

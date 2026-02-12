@@ -39,7 +39,7 @@ scale = 1e-3
 ```
 
 
-### 2.3 PM data section
+### 2.3 Primary PM data section
 The table `[pm]` is used to define the input data of the permanent magnets (PMs).
 
 Value `files`: is an array of strings which define the filenames (.txt file) containing the PM geometrical data (see section 2.3.1). Each file represents a group of PMs. A value of material code is assigned to each group using the value `mat_code`.
@@ -133,6 +133,19 @@ angle = 1.1
 The geometrical position of the three PMs groups are re-assigned to the values reported in the array data `zpos`. Values here reported are given with reference to the `scale` value.
 
 The PM orientations are modified of an angle equal to +/- 1.1 degrees depending on the sign of the torque values listed in matlab file described by the value `file`.
+
+
+## 2.3.3 Shimming PM Input data (.txt)
+
+The table `[pm.shim]` is used to define the input data of the shimming permanent magnets (PMs), if any.
+
+Value `files`: is an array of strings which define the filenames (.txt file) containing the shimming PM geometrical data (see section 2.3.1). Each file represents a group of PMs. A value of material code is assigned to each group using the value `mat_code`.
+
+Value `mat_code`: is an array of numerical data which define the material code (see section 2.4) of each group of PMs. Its length is equal to the  number of PM groups
+
+The .txt file listed in table `[pm.shim]` are structured in the same way of the primary PM data.
+
+All shimming PMs are added to the list of PMs for the computation of the array field.
 
 
 ### 2.4 Material data section
@@ -280,6 +293,11 @@ After the header, for each PM the values of the *x*, *y*, *z* coordinates and th
 
 The table `[points]` is used to give the coordinates of the computational points.
 Value `file`: filename of the .txt file with contains list of *x,y,z* coordinates of the computational points. Values here reported are given with reference to the `scale` value.
+Value `typepoint`: variable which define the type of point data:
+- `typepoint` = 'V' volume data points (default)
+- `typepoint` = 'S' surface data points (by definition the last point is the centre of the DSV)
+
+
 
 ```toml
 [points]

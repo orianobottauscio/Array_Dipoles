@@ -303,6 +303,31 @@ function [gx,gy,gz]=geometrico_plus2(xdip,ydip,zdip,U2,dimU,dimV,dimW,xp,yp,zp)
 
 end
 
+function [Bx5,By5,Bz5]=ideal_dipole(POINTS,MAGNETI_GEO,J)
+Bx5=zeros(POINTS.Npoint,1);
+By5=zeros(POINTS.Npoint,1);
+Bz5=zeros(POINTS.Npoint,1);
+emme_tot=J.*MAGNETI_GEO.cubo_dimU2(1:MAGNETI_GEO.Ndipoli_tot,1).*...
+            MAGNETI_GEO.cubo_dimV2(1:MAGNETI_GEO.Ndipoli_tot,1).*...
+            MAGNETI_GEO.cubo_dimW2(1:MAGNETI_GEO.Ndipoli_tot,1);
+emme(1,:)=emme_tot.*cos(MAGNETI_GEO.angle(1:MAGNETI_GEO.Ndipoli_tot,1)/180*pi);
+emme(2,:)=emme_tot.*sin(MAGNETI_GEO.angle(1:MAGNETI_GEO.Ndipoli_tot,1)/180*pi);
+emme(3,:)=0;
+for nd=1:MAGNETI_GEO.Ndipoli_tot
+  erre(1,:)=POINTS.xp(:,1)-MAGNETI_GEO.xdip(nd,1);
+  erre(2,:)=POINTS.yp(:,1)-MAGNETI_GEO.ydip(nd,1);
+  erre(3,:)=POINTS.zp(:,1)-MAGNETI_GEO.zdip(nd,1);
+  erremod=vecnorm(erre,2,1);
+  prod=sum(emme(:,nd).*erre,1);
+  b1=(3*erre.*(prod./(erremod.^5))-emme(:,nd)./(erremod.^3))/(4*pi);
+  Bx5(:,1)=Bx5(:,1)+transpose(b1(1,:));
+  By5(:,1)=By5(:,1)+transpose(b1(2,:));
+  Bz5(:,1)=Bz5(:,1)+transpose(b1(3,:));
+end
+return
+end
+
+
 
 function [Bx5,By5,Bz5] = compute_field(Npoint,xp,yp,zp,Ndipoli_tot,xdip,ydip,zdip,angle,cubo_dimU2,cubo_dimV2,cubo_dimW2,J,Mu0)
   Hx5=zeros(Npoint,1);

@@ -42,6 +42,36 @@ end
 return
 end
 
+function [ierr,MAGNETI_GEO,MAGNETI_GEOshim] = readPMshim(toml_data,MAGNETI_GEO,MAGNETI_GEOshim,scale)
+ierr=0;
+if ~isfield(toml_data.pm,'shim')
+    return
+end
+if ~isfield(toml_data.pm.shim,'mat_code')
+    fprintf('Field [pm.shim.mat_code] not present\n');
+    ierr=1;
+    return
+end
+if ~isfield(toml_data.pm.shim,'files')
+    fprintf('Field [pm.shim.files] not present\n');
+    ierr=1;
+    return
+end
+MAGNETI_GEOshim.Nlist=length(toml_data.pm.shim.mat_code);
+MAGNETI_GEO.Nlist=MAGNETI_GEO.Nlist+MAGNETI_GEOshim.Nlist;
+MAGNETI_GEOshim.material=toml_data.pm.shim.mat_code;
+MAGNETI_GEO.material=[MAGNETI_GEO.material MAGNETI_GEOshim.material];
+MAGNETI_GEOshim.fileGEO=toml_data.pm.shim.files;
+MAGNETI_GEO.fileGEO=[MAGNETI_GEO.fileGEO MAGNETI_GEOshim.fileGEO];
+
+for n=MAGNETI_GEO.Nlist-MAGNETI_GEOshim.Nlist+1:MAGNETI_GEO.Nlist
+% Read file with shimming magnets geometry
+  [MAGNETI_GEO] = read_labels.readMAG_GEO(n,scale,MAGNETI_GEO);
+end
+return
+end
+
+
 function [MAGNETI_GEO] = readMAG_GEO(n,scale,MAGNETI_GEO)
 %------------------------------------------------------------------
 % Readling geometrical data of magnets
@@ -283,6 +313,13 @@ if ~isfield(toml_data.points,'file')
     return
 end
 POINTS.file=toml_data.points.file;
+
+if isfield(toml_data.points,'typepoint')
+  POINTS.typepoint=toml_data.points.typepoint;
+else
+  POINTS.typepoint='V';
+end
+
 IDfilePoint = fopen(POINTS.file,'r');
 sizeA = [3 Inf];
 CPoints = fscanf(IDfilePoint,'%f,%f,%f',sizeA);

@@ -3,13 +3,38 @@ classdef monte_carlo
 methods (Static)
 
 
+function [x_output,evaluation_optMC] = MC_opt(f,x_input,N_estrazioni,Var_input,nvars)
+a=-Var_input;
+b=Var_input;
+evaluation_optMC=1e36;
+for n=1:N_estrazioni
+  r = a +(b-a)*rand(nvars,1);
+  xx=x_input+transpose(r);
+  yy = feval(f,xx);
+  if yy < evaluation_optMC
+    evaluation_optMC=yy;
+    x_output=xx;
+  end
+end
+return
+end
+
+
+
 function [MONTECARLO] = Run_Monte_Carlo(write_every,MONTECARLO,MAGNETI_GEO,MATERIALI,MAGNETI_STATO,SIMUL_DATA,POINTS,Mu0)
 
-MONTECARLO.raccolta_bmean=zeros(MONTECARLO.nround,1);
-MONTECARLO.raccolta_bmin=zeros(MONTECARLO.nround,1);
-MONTECARLO.raccolta_bmax=zeros(MONTECARLO.nround,1);
-MONTECARLO.raccolta_DEV1=zeros(MONTECARLO.nround,1);
-MONTECARLO.raccolta_DEV2=zeros(MONTECARLO.nround,1);
+if strcmpi(POINTS.typepoint,'V')   %Volume data in DSV
+  MONTECARLO.raccolta_bmean=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_bmin=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_bmax=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_DEV1=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_DEV2=zeros(MONTECARLO.nround,1);
+elseif strcmpi(POINTS.typepoint,'S')   %Surface data in DSV
+  MONTECARLO.raccolta_b0=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_bmin=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_bmax=zeros(MONTECARLO.nround,1);
+  MONTECARLO.raccolta_DEV3=zeros(MONTECARLO.nround,1);
+end
 
 % Save the original values of magnet geometric data
 xdip_SAVE=MAGNETI_GEO.xdip(1:MAGNETI_GEO.Ndipoli_tot,1);
@@ -141,20 +166,30 @@ for nnr = 1:MONTECARLO.nround
       SIMUL_DATA.NL,recompute,MAGNETI_GEO,MAGNETI_STATO,MATERIALI,POINTS,L,U,P,Tnoto2,Mu0,output_JHmag);
   first=false;
   B5 = util.estrai_output(SIMUL_DATA,BFIELD);
-  [MONTECARLO] = monte_carlo.get_results(nnr,MONTECARLO,B5);
+  [MONTECARLO] = monte_carlo.get_results(nnr,MONTECARLO,B5,POINTS);
 end
 
 return
 end
 
 
-function   [MONTECARLO] = get_results(nnr,MONTECARLO,B5)
-[Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(B5);
-MONTECARLO.raccolta_bmean(nnr,1)=Bmean*1000;
-MONTECARLO.raccolta_bmin(nnr,1)=Bmin*1000;
-MONTECARLO.raccolta_bmax(nnr,1)=Bmax*1000;
-MONTECARLO.raccolta_DEV1(nnr,1)=DEV1_ppm;
-MONTECARLO.raccolta_DEV2(nnr,1)=DEV2_ppm;
+function   [MONTECARLO] = get_results(nnr,MONTECARLO,B5,POINTS)
+
+if strcmpi(POINTS.typepoint,'V')   %Volume data in DSV
+  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(B5);
+  MONTECARLO.raccolta_bmean(nnr,1)=Bmean*1000;
+  MONTECARLO.raccolta_bmin(nnr,1)=Bmin*1000;
+  MONTECARLO.raccolta_bmax(nnr,1)=Bmax*1000;
+  MONTECARLO.raccolta_DEV1(nnr,1)=DEV1_ppm;
+  MONTECARLO.raccolta_DEV2(nnr,1)=DEV2_ppm;
+elseif strcmpi(POINTS.typepoint,'S')   %Surface data in DSV
+  [Bmin,Bmax,B0,DEV3_ppm] = util.variability3(B5);
+  MONTECARLO.raccolta_b0(nnr,1)=B0*1000;
+  MONTECARLO.raccolta_bmin(nnr,1)=Bmin*1000;
+  MONTECARLO.raccolta_bmax(nnr,1)=Bmax*1000;
+  MONTECARLO.raccolta_DEV3(nnr,1)=DEV3_ppm;
+end
+    
 return
 end
 

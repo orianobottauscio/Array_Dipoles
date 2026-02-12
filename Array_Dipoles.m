@@ -19,7 +19,7 @@ function Array_Dipoles(varargin)
 %
 % Author: O. Bottauscio (first version: 2025)
 %-------------------------------------------------------------------------
-Code_Version='1.2';
+Code_Version='2.0.0';
 
 fprintf('Code: Array_Dipoles, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -54,18 +54,27 @@ input_file_version = toml_data.version;
 % Units
 [scale] = read_labels.readUnit(toml_data);
 
-% Read magnets data
+% Read primary magnets data
 MAGNETI_GEO = struct;
 [ierr,MAGNETI_GEO] = read_labels.readPM(toml_data,MAGNETI_GEO,scale);
 if ierr > 0
     return
 end
 
-% check if magnet geometry modification
+% check if primary magnet geometry modification
 [ierr,MAGNETI_GEO] = read_labels.readMODGEO(toml_data,scale,MAGNETI_GEO);
 if ierr > 0
     return
 end
+
+% Read shimming magnets data
+MAGNETI_GEOshim = struct;
+[ierr,MAGNETI_GEO,MAGNETI_GEOshim] = read_labels.readPMshim(toml_data,MAGNETI_GEO,MAGNETI_GEOshim,scale);
+if ierr > 0
+    return
+end
+
+
 
 % Read material data
 MATERIALI = struct;
@@ -138,16 +147,26 @@ if strcmp(SIMUL_DATA.Type,'DET')
       recompute,MAGNETI_GEO,MAGNETI_STATO,MATERIALI,POINTS,L,U,P,Tnoto2,Mu0,output_JHmag);
   fprintf('Done\n');
   B5 = util.estrai_output(SIMUL_DATA,BFIELD);
-  [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(B5);
-  fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
-  fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
-  fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
+
   filemat=SIMUL_DATA.OutputFile;
   save(filemat,'Code_Version','MAGNETI_GEO','MATERIALI','MAGNETI_STATO','TEMPERATURE');
   save(filemat,'SIMUL_DATA','-append');
   save(filemat,'POINTS','BFIELD','-append');
-  save(filemat,'Bmin','Bmax','Bmean','DEV1_ppm','DEV2_ppm','-append');
   save(filemat,'input_file_description','input_file_version','-append');
+  if strcmpi(POINTS.typepoint,'V')   %Volume data in DSV
+    fprintf('Volume points in DSV - \n');
+    [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = util.variability(B5);
+    fprintf('Bmin,Bmax,Bmean [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,Bmean*1000);
+    fprintf('DEV1 [ppm]: %f\n',DEV1_ppm);
+    fprintf('DEV2 [ppm]: %f\n',DEV2_ppm);
+    save(filemat,'Bmin','Bmax','Bmean','DEV1_ppm','DEV2_ppm','-append');
+  elseif strcmpi(POINTS.typepoint,'S')   %Surface data in DSV
+    fprintf('Surface points in DSV - \n');
+    [Bmin,Bmax,B0,DEV3_ppm] = util.variability3(B5);
+    fprintf('Bmin,Bmax,B0 [mT]: %f %f %f\n',Bmin*1000,Bmax*1000,B0*1000);
+    fprintf('DEV3 [ppm]: %f\n',DEV3_ppm);
+    save(filemat,'Bmin','Bmax','B0','DEV3_ppm','-append');
+  end
 %
   if TORQUE.flag
     fprintf('Starting computation of PM torque...\n');
@@ -177,23 +196,38 @@ elseif strcmp(SIMUL_DATA.Type,'MC')
   [MONTECARLO] = monte_carlo.Run_Monte_Carlo(write_every,MONTECARLO,MAGNETI_GEO,MATERIALI,...
       MAGNETI_STATO,SIMUL_DATA,POINTS,Mu0);
 %  
-  [MONTECARLO.bmean_expected,MONTECARLO.bmean_Std,MONTECARLO.bmean_CI95] = util.statistical_data(MONTECARLO.raccolta_bmean);
-  fprintf('----------- Distribution of Bmean --------------\n');
-  fprintf('Expected value [mT]: %f\n',MONTECARLO.bmean_expected);
-  fprintf('Std value [mT]: %f\n',MONTECARLO.bmean_Std);
-  fprintf('95 Coverage interval [mT]: [%f,%f]\n',MONTECARLO.bmean_CI95);
-  
-  [MONTECARLO.DEV1_expected,MONTECARLO.DEV1_Std,MONTECARLO.DEV1_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV1);
-  fprintf('----------- Distribution of DEV1 --------------\n');
-  fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV1_expected);
-  fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV1_Std);
-  fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV1_CI95);
 
-  [MONTECARLO.DEV2_expected,MONTECARLO.DEV2_Std,MONTECARLO.DEV2_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV2);
-  fprintf('----------- Distribution of DEV2 --------------\n');
-  fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV2_expected);
-  fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV2_Std);
-  fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV2_CI95);
+
+  if strcmpi(POINTS.typepoint,'V')   %Volume data in DSV
+    fprintf('Volume points in DSV - \n');
+    [MONTECARLO.bmean_expected,MONTECARLO.bmean_Std,MONTECARLO.bmean_CI95] = util.statistical_data(MONTECARLO.raccolta_bmean);
+    fprintf('----------- Distribution of Bmean --------------\n');
+    fprintf('Expected value [mT]: %f\n',MONTECARLO.bmean_expected);
+    fprintf('Std value [mT]: %f\n',MONTECARLO.bmean_Std);
+    fprintf('95 Coverage interval [mT]: [%f,%f]\n',MONTECARLO.bmean_CI95);
+    [MONTECARLO.DEV1_expected,MONTECARLO.DEV1_Std,MONTECARLO.DEV1_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV1);
+    fprintf('----------- Distribution of DEV1 --------------\n');
+    fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV1_expected);
+    fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV1_Std);
+    fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV1_CI95);
+    [MONTECARLO.DEV2_expected,MONTECARLO.DEV2_Std,MONTECARLO.DEV2_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV2);
+    fprintf('----------- Distribution of DEV2 --------------\n');
+    fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV2_expected);
+    fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV2_Std);
+    fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV2_CI95);
+  elseif strcmpi(POINTS.typepoint,'S')   %Surface data in DSV
+    fprintf('Surface points in DSV - \n');
+    [MONTECARLO.b0_expected,MONTECARLO.b0_Std,MONTECARLO.b0_CI95] = util.statistical_data(MONTECARLO.raccolta_b0);
+    fprintf('----------- Distribution of B0 --------------\n');
+    fprintf('Expected value [mT]: %f\n',MONTECARLO.b0_expected);
+    fprintf('Std value [mT]: %f\n',MONTECARLO.b0_Std);
+    fprintf('95 Coverage interval [mT]: [%f,%f]\n',MONTECARLO.b0_CI95);
+    [MONTECARLO.DEV3_expected,MONTECARLO.DEV3_Std,MONTECARLO.DEV3_CI95] = util.statistical_data(MONTECARLO.raccolta_DEV3);
+    fprintf('----------- Distribution of DEV3 --------------\n');
+    fprintf('Expected value [ppm]: %f\n',MONTECARLO.DEV3_expected);
+    fprintf('Std value [ppm]: %f\n',MONTECARLO.DEV3_Std);
+    fprintf('95 Coverage interval [ppm]: [%f,%f]\n',MONTECARLO.DEV3_CI95);
+  end
 %
   filemat=SIMUL_DATA.OutputFile;
   save(filemat,'Code_Version','MAGNETI_GEO','MATERIALI','MAGNETI_STATO','TEMPERATURE');

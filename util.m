@@ -50,6 +50,15 @@ CI = yMean+yStd*tinv([t1 t2], N-1);                    % Calculate 95% Probabili
 return
 end
 
+
+function [Bmin,Bmax,dB_uT] = variability_delta(B5)
+  Bmin=min(abs(B5(:,1)));
+  Bmax=max(abs(B5(:,1)));
+  dB_uT=(Bmax-Bmin)*1e6;
+return
+end
+
+
 function [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = variability(B5)
   Bmin=min(abs(B5(:,1)));
   Bmax=max(abs(B5(:,1)));
@@ -57,6 +66,14 @@ function [Bmin,Bmax,Bmean,DEV1_ppm,DEV2_ppm] = variability(B5)
   Bstd=std(abs(B5(:,1)));
   DEV2_ppm=Bstd/Bmean*1e6;
   DEV1_ppm=(Bmax-Bmin)/Bmean*1e6;
+return
+end
+
+function [Bmin,Bmax,B0,DEV3_ppm] = variability3(B5)
+  Bmin=min(abs(B5(:,1)));
+  Bmax=max(abs(B5(:,1)));
+  B0=abs(B5(end,1));
+  DEV3_ppm=(Bmax-Bmin)/B0*1e6;
 return
 end
 
