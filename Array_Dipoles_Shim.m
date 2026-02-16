@@ -21,7 +21,7 @@ global PM_position
 global PM_presence_save
 
 
-Code_Version='2.1.0';
+Code_Version='2.1.1';
 
 fprintf('Code: Array_Dipoles_Shim, Version: %s\n',Code_Version);
 DirRun=pwd;   %Directory di run
@@ -328,7 +328,7 @@ elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'FM')
   start_optimization = tic;
   fprintf('----OPTIMIZATION with Fmincon----\n');
   fprintf('N. of parameters: %d\n',nvars_rid);
-  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'Algorithm','sqp','MaxFunctionEvaluations',5000);
+  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'Algorithm','active-set','MaxFunctionEvaluations',5000);
 %  options = optimoptions('fmincon','ObjectiveLimit',Tolerance,'MaxFunctionEvaluations',5000);
   x_input_start = x_input_good_rid;
   [x_input_rid,~,exitflagFM,OutputFM] = fmincon(f,x_input_start,[],[],[],[],...
@@ -347,7 +347,7 @@ elseif strcmpi(SHIMMING_OPT.Local_Algorithm,'FM')
   SHIMMING_OPT.FM=true;
 elseif contains(SHIMMING_OPT.Local_Algorithm,'+MC')
   Max_iter=200;
-  Max_iter_noChange=30;
+  Max_iter_noChange=5;
   Max_fval=700;
   N_estrazioni=SHIMMING_OPT.MC_extraction;
   Neval_function=0;
